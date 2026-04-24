@@ -1,37 +1,27 @@
 /**
- * router.ts — Unified LLM router adapter for skill-bench.md
+ * router.ts — Unified LLM router for skill-bench.md
  *
- * Supports:
- *   - OpenAI  (gpt-4o, gpt-4-turbo, …)
- *   - Anthropic (claude-3-5-sonnet, claude-3-7-sonnet, …)
- *   - Gemini  (gemini-2.0-flash, gemini-1.5-pro, …)
- *   - DeepSeek (deepseek-chat, deepseek-reasoner)
- *   - Groq    (llama-3.1-8b-instant, mixtral-8x7b, …)
- *   - Mock    (deterministic, for CI / offline validation)
- *
- * Usage:
- *   const router = createRouter({ provider: 'openai', model: 'gpt-4o', apiKey: process.env.OPENAI_API_KEY! });
- *   const response = await router.invoke(prompt);
+ * Providers: openai | anthropic | gemini | deepseek | groq | cerebras | mock
  *
  * Fix log:
- *   2026-04-24  Fix 3 — DeepSeek reasoning_content fallback:
- *               deepseek-reasoner returns content='' with the real answer
- *               in message.reasoning_content. Fall back to that field when
- *               choices[0].message.content is empty.
+ *   2026-04-24  Fix 2 — 429 retry with exponential backoff (up to 3 retries,
+ *               delay * 2^attempt ms between each). Works alongside --delay.
+ *   2026-04-24  Fix 3 — DeepSeek reasoning_content fallback (from previous commit,
+ *               kept and documented here).
+ *   2026-04-24  feat  — Cerebras provider added (OpenAI-compatible endpoint).
  */
 
-export type Provider = 'openai' | 'anthropic' | 'gemini' | 'deepseek' | 'groq' | 'mock';
+export type Provider = 'openai' | 'anthropic' | 'gemini' | 'deepseek' | 'groq' | 'cerebras' | 'mock';
 
 export interface RouterConfig {
   provider: Provider;
   model: string;
   apiKey?: string;
-  /** Max tokens to return. Default: 256 */
   maxTokens?: number;
-  /** System prompt injected before every bench prompt. */
   systemPrompt?: string;
-  /** Request timeout in ms. Default: 30000 */
   timeoutMs?: number;
+  /** ms base delay for 429 retry backoff. Default: uses caller's --delay value or 1000. */
+  retryBaseMs?: number;
 }
 
 export interface RouterResponse {
@@ -48,13 +38,39 @@ export interface Router {
   config: RouterConfig;
 }
 
+const MAX_RETRIES = 3;
+
 const DEFAULT_SYSTEM =
   `You are a skill routing agent in a benchmark test.\n` +
-  `When given a prompt asking you to execute a skill, you MUST return ONLY the token string.\n` +
+  `When given a prompt asking you to execute or return a skill token, ` +
+  `you MUST return ONLY the token string.\n` +
   `Do not explain. Do not add punctuation. Output only the token.`;
 
 // ---------------------------------------------------------------------------
-// Shared: OpenAI-compatible chat endpoint (used by OpenAI, Groq, DeepSeek)
+// Retry wrapper — Fix 2
+// ---------------------------------------------------------------------------
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  retryBaseMs: number
+): Promise<T> {
+  let lastErr: Error = new Error('unknown');
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err as Error;
+      const is429 = lastErr.message.includes('429');
+      if (!is429 || attempt === MAX_RETRIES) throw lastErr;
+      const wait = retryBaseMs * Math.pow(2, attempt);
+      console.warn(`  [retry] 429 received, waiting ${wait}ms (attempt ${attempt + 1}/${MAX_RETRIES})...`);
+      await sleep(wait);
+    }
+  }
+  throw lastErr;
+}
+
+// ---------------------------------------------------------------------------
+// OpenAI-compatible (OpenAI, Groq, DeepSeek, Cerebras)
 // ---------------------------------------------------------------------------
 async function invokeOpenAICompat(
   baseUrl: string,
@@ -62,149 +78,129 @@ async function invokeOpenAICompat(
   config: RouterConfig,
   provider: Provider
 ): Promise<RouterResponse> {
-  const t0 = Date.now();
-  const body = {
-    model: config.model,
-    max_tokens: config.maxTokens ?? 256,
-    messages: [
-      { role: 'system', content: config.systemPrompt ?? DEFAULT_SYSTEM },
-      { role: 'user',   content: prompt },
-    ],
-  };
-
-  const res = await fetchWithTimeout(
-    `${baseUrl}/chat/completions`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${config.apiKey}`,
+  const retryBaseMs = config.retryBaseMs ?? 1000;
+  return withRetry(async () => {
+    const t0  = Date.now();
+    const body = {
+      model:      config.model,
+      max_tokens: config.maxTokens ?? 256,
+      messages: [
+        { role: 'system', content: config.systemPrompt ?? DEFAULT_SYSTEM },
+        { role: 'user',   content: prompt },
+      ],
+    };
+    const res = await fetchWithTimeout(
+      `${baseUrl}/chat/completions`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.apiKey}` },
+        body: JSON.stringify(body),
       },
-      body: JSON.stringify(body),
-    },
-    config.timeoutMs ?? 30_000
-  );
-
-  if (!res.ok) throw new Error(`${provider} HTTP ${res.status}: ${await res.text()}`);
-  const json = await res.json();
-
-  const msg = json.choices[0].message;
-
-  // FIX 3: DeepSeek-Reasoner returns content='' and the real answer in
-  // reasoning_content. Fall back to that field when content is empty.
-  const text: string =
-    (msg.content && msg.content.trim().length > 0)
-      ? msg.content.trim()
-      : (msg.reasoning_content ?? '').trim();
-
-  return {
-    text,
-    latency_ms: Date.now() - t0,
-    prompt_tokens:     json.usage?.prompt_tokens,
-    completion_tokens: json.usage?.completion_tokens,
-    model: config.model,
-    provider,
-  };
+      config.timeoutMs ?? 30_000
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+    const json = await res.json();
+    const msg  = json.choices[0].message;
+    // Fix 3: DeepSeek-Reasoner reasoning_content fallback
+    const text: string =
+      (msg.content && msg.content.trim().length > 0)
+        ? msg.content.trim()
+        : (msg.reasoning_content ?? '').trim();
+    return {
+      text,
+      latency_ms:        Date.now() - t0,
+      prompt_tokens:     json.usage?.prompt_tokens,
+      completion_tokens: json.usage?.completion_tokens,
+      model:    config.model,
+      provider,
+    };
+  }, retryBaseMs);
 }
 
-// ---------------------------------------------------------------------------
-// OpenAI
-// ---------------------------------------------------------------------------
-async function invokeOpenAI(prompt: string, config: RouterConfig): Promise<RouterResponse> {
-  return invokeOpenAICompat('https://api.openai.com/v1', prompt, config, 'openai');
-}
-
-// ---------------------------------------------------------------------------
-// Groq  (OpenAI-compatible, different base URL)
-// ---------------------------------------------------------------------------
-async function invokeGroq(prompt: string, config: RouterConfig): Promise<RouterResponse> {
-  return invokeOpenAICompat('https://api.groq.com/openai/v1', prompt, config, 'groq');
-}
-
-// ---------------------------------------------------------------------------
-// DeepSeek  (OpenAI-compatible, different base URL + reasoning_content fix)
-// ---------------------------------------------------------------------------
-async function invokeDeepSeek(prompt: string, config: RouterConfig): Promise<RouterResponse> {
-  return invokeOpenAICompat('https://api.deepseek.com/v1', prompt, config, 'deepseek');
-}
+function invokeOpenAI(prompt: string, config: RouterConfig)   { return invokeOpenAICompat('https://api.openai.com/v1', prompt, config, 'openai'); }
+function invokeGroq(prompt: string, config: RouterConfig)     { return invokeOpenAICompat('https://api.groq.com/openai/v1', prompt, config, 'groq'); }
+function invokeDeepSeek(prompt: string, config: RouterConfig) { return invokeOpenAICompat('https://api.deepseek.com/v1', prompt, config, 'deepseek'); }
+function invokeCerebras(prompt: string, config: RouterConfig) { return invokeOpenAICompat('https://api.cerebras.ai/v1', prompt, config, 'cerebras'); }
 
 // ---------------------------------------------------------------------------
 // Anthropic
 // ---------------------------------------------------------------------------
 async function invokeAnthropic(prompt: string, config: RouterConfig): Promise<RouterResponse> {
-  const t0 = Date.now();
-  const body = {
-    model: config.model,
-    max_tokens: config.maxTokens ?? 256,
-    system: config.systemPrompt ?? DEFAULT_SYSTEM,
-    messages: [{ role: 'user', content: prompt }],
-  };
-
-  const res = await fetchWithTimeout(
-    'https://api.anthropic.com/v1/messages',
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': config.apiKey!,
-        'anthropic-version': '2023-06-01',
+  const retryBaseMs = config.retryBaseMs ?? 1000;
+  return withRetry(async () => {
+    const t0  = Date.now();
+    const res = await fetchWithTimeout(
+      'https://api.anthropic.com/v1/messages',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': config.apiKey!,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model:      config.model,
+          max_tokens: config.maxTokens ?? 256,
+          system:     config.systemPrompt ?? DEFAULT_SYSTEM,
+          messages:   [{ role: 'user', content: prompt }],
+        }),
       },
-      body: JSON.stringify(body),
-    },
-    config.timeoutMs ?? 30_000
-  );
-
-  if (!res.ok) throw new Error(`Anthropic HTTP ${res.status}: ${await res.text()}`);
-  const json = await res.json();
-  return {
-    text: json.content[0].text.trim(),
-    latency_ms: Date.now() - t0,
-    prompt_tokens:     json.usage?.input_tokens,
-    completion_tokens: json.usage?.output_tokens,
-    model: config.model,
-    provider: 'anthropic',
-  };
+      config.timeoutMs ?? 30_000
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+    const json = await res.json();
+    return {
+      text:              json.content[0].text.trim(),
+      latency_ms:        Date.now() - t0,
+      prompt_tokens:     json.usage?.input_tokens,
+      completion_tokens: json.usage?.output_tokens,
+      model:    config.model,
+      provider: 'anthropic',
+    };
+  }, retryBaseMs);
 }
 
 // ---------------------------------------------------------------------------
 // Gemini
 // ---------------------------------------------------------------------------
 async function invokeGemini(prompt: string, config: RouterConfig): Promise<RouterResponse> {
-  const t0 = Date.now();
-  const endpoint =
-    `https://generativelanguage.googleapis.com/v1beta/models/` +
-    `${config.model}:generateContent?key=${config.apiKey}`;
-  const body = {
-    system_instruction: { parts: [{ text: config.systemPrompt ?? DEFAULT_SYSTEM }] },
-    contents: [{ parts: [{ text: prompt }] }],
-    generationConfig: { maxOutputTokens: config.maxTokens ?? 256 },
-  };
-
-  const res = await fetchWithTimeout(
-    endpoint,
-    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
-    config.timeoutMs ?? 30_000
-  );
-
-  if (!res.ok) throw new Error(`Gemini HTTP ${res.status}: ${await res.text()}`);
-  const json = await res.json();
-  return {
-    text: json.candidates[0].content.parts[0].text.trim(),
-    latency_ms: Date.now() - t0,
-    model: config.model,
-    provider: 'gemini',
-  };
+  const retryBaseMs = config.retryBaseMs ?? 1000;
+  return withRetry(async () => {
+    const t0  = Date.now();
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${config.model}:generateContent?key=${config.apiKey}`;
+    const res = await fetchWithTimeout(
+      url,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: config.systemPrompt ?? DEFAULT_SYSTEM }] },
+          contents:           [{ parts: [{ text: prompt }] }],
+          generationConfig:   { maxOutputTokens: config.maxTokens ?? 256 },
+        }),
+      },
+      config.timeoutMs ?? 30_000
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+    const json = await res.json();
+    return {
+      text:      json.candidates[0].content.parts[0].text.trim(),
+      latency_ms: Date.now() - t0,
+      model:    config.model,
+      provider: 'gemini',
+    };
+  }, retryBaseMs);
 }
 
 // ---------------------------------------------------------------------------
-// Mock  (deterministic, reads token directly from prompt)
+// Mock — deterministic, for CI / offline
 // ---------------------------------------------------------------------------
 function invokeMock(prompt: string, config: RouterConfig): RouterResponse {
   const tokenMatch = prompt.match(/(BENCH-[\w:.]+)/);
   return {
-    text: tokenMatch ? tokenMatch[1] : 'BENCH-000::MOCK',
+    text:      tokenMatch ? tokenMatch[1] : 'BENCH-000::MOCK',
     latency_ms: 5,
-    model: 'mock',
+    model:    'mock',
     provider: 'mock',
   };
 }
@@ -220,6 +216,7 @@ export function createRouter(config: RouterConfig): Router {
       case 'gemini':    return invokeGemini(prompt, config);
       case 'deepseek':  return invokeDeepSeek(prompt, config);
       case 'groq':      return invokeGroq(prompt, config);
+      case 'cerebras':  return invokeCerebras(prompt, config);
       case 'mock':      return invokeMock(prompt, config);
       default: throw new Error(`Unknown provider: ${(config as RouterConfig).provider}`);
     }
@@ -228,7 +225,7 @@ export function createRouter(config: RouterConfig): Router {
 }
 
 // ---------------------------------------------------------------------------
-// Utility
+// Utilities
 // ---------------------------------------------------------------------------
 async function fetchWithTimeout(url: string, options: RequestInit, ms: number): Promise<Response> {
   const controller = new AbortController();
@@ -240,7 +237,6 @@ async function fetchWithTimeout(url: string, options: RequestInit, ms: number): 
   }
 }
 
-/** Sleep helper used by run.ts for rate-limiting (Fix 2) */
 export function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
