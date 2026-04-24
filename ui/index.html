@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>skill-bench — Routing Fidelity Arena</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0a0f;
+  --surface: #111118;
+  --surface-2: #16161f;
+  --surface-3: #1c1c28;
+  --border: rgba(255,255,255,0.08);
+  --border-bright: rgba(255,255,255,0.15);
+  --text: #e8e8f0;
+  --text-muted: #888899;
+  --text-faint: #44445a;
+  --accent: #6c63ff;
+  --accent-glow: rgba(108,99,255,0.35);
+  --accent-2: #00d4aa;
+  --accent-2-glow: rgba(0,212,170,0.3);
+  --pass: #00d4aa;
+  --fail: #ff4d6d;
+  --warn: #ffb347;
+  --star: #ffd700;
+  --font-mono: 'JetBrains Mono', monospace;
+  --font-body: 'Inter', sans-serif;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --radius-lg: 20px;
+  --transition: 180ms cubic-bezier(0.16,1,0.3,1);
+}
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:none;text-size-adjust:none;-webkit-font-smoothing:antialiased;scroll-behavior:smooth}
+body{min-height:100dvh;font-family:var(--font-body);font-size:16px;color:var(--text);background:var(--bg);overflow-x:hidden}
+
+.app { display:flex; flex-direction:column; min-height:100dvh; }
+header {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:16px 24px; border-bottom:1px solid var(--border);
+  background:rgba(10,10,15,0.85); backdrop-filter:blur(12px);
+  position:sticky; top:0; z-index:100;
+}
+.logo { display:flex; align-items:center; gap:10px; font-family:var(--font-mono); font-weight:700; font-size:15px; letter-spacing:-0.3px; }
+.logo-icon { width:32px; height:32px; }
+.logo-tag { color:var(--text-muted); font-weight:400; font-size:12px; margin-left:4px; }
+.nav-pills { display:flex; gap:4px; }
+.nav-pill {
+  padding:6px 14px; border-radius:99px; font-size:13px; font-weight:500;
+  background:transparent; border:1px solid var(--border); color:var(--text-muted); cursor:pointer;
+  transition:all var(--transition);
+}
+.nav-pill:hover,.nav-pill.active{ background:var(--surface-3); color:var(--text); border-color:var(--border-bright); }
+.nav-pill.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+
+main { flex:1; padding:32px 24px; max-width:1100px; width:100%; margin:0 auto; }
+
+.page { display:none; }
+.page.active { display:block; }
+
+.setup-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:28px; }
+@media(max-width:700px){ .setup-grid{ grid-template-columns:1fr; } }
+
+.card {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--radius); padding:24px;
+}
+.card-title { font-size:11px; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; color:var(--text-muted); margin-bottom:16px; }
+
+label { font-size:13px; color:var(--text-muted); display:block; margin-bottom:6px; margin-top:14px; }
+label:first-of-type { margin-top:0; }
+input[type=text], input[type=password], select, textarea {
+  width:100%; padding:10px 14px; background:var(--surface-2); border:1px solid var(--border);
+  border-radius:var(--radius-sm); color:var(--text); font-family:var(--font-body); font-size:14px;
+  outline:none; transition:border-color var(--transition);
+}
+input:focus,select:focus,textarea:focus { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-glow); }
+textarea { resize:vertical; min-height:90px; font-family:var(--font-mono); font-size:12px; }
+select option { background:var(--surface-2); }
+
+.model-row { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+.model-row input { flex:1; }
+.model-color { width:14px; height:14px; border-radius:50%; flex-shrink:0; }
+.color-a { background:var(--accent); box-shadow:0 0 6px var(--accent-glow); }
+.color-b { background:var(--accent-2); box-shadow:0 0 6px var(--accent-2-glow); }
+
+.skill-count-display {
+  font-family:var(--font-mono); font-size:32px; font-weight:700; color:var(--accent);
+  text-shadow:0 0 20px var(--accent-glow); margin:8px 0 4px;
+}
+.skill-count-label { font-size:12px; color:var(--text-muted); }
+.skill-tags { display:flex; flex-wrap:wrap; gap:6px; margin-top:12px; }
+.skill-tag {
+  padding:3px 10px; border-radius:99px; font-size:11px; font-weight:500;
+  background:var(--surface-3); border:1px solid var(--border); color:var(--text-muted);
+}
+.skill-tag.loaded { background:rgba(108,99,255,0.15); border-color:var(--accent); color:var(--accent); }
+
+.btn {
+  display:inline-flex; align-items:center; gap:8px;
+  padding:11px 22px; border-radius:var(--radius-sm); font-size:14px; font-weight:600;
+  cursor:pointer; border:none; transition:all var(--transition);
+}
+.btn-primary { background:var(--accent); color:#fff; }
+.btn-primary:hover { background:#7c74ff; box-shadow:0 0 20px var(--accent-glow); transform:translateY(-1px); }
+.btn-primary:active { transform:translateY(0); }
+.btn-secondary { background:var(--surface-2); color:var(--text); border:1px solid var(--border); }
+.btn-secondary:hover { border-color:var(--border-bright); background:var(--surface-3); }
+.btn-lg { padding:14px 32px; font-size:15px; border-radius:var(--radius); width:100%; justify-content:center; margin-top:8px; }
+.btn-ghost { background:transparent; color:var(--text-muted); border:1px solid var(--border); }
+.btn-ghost:hover { color:var(--text); border-color:var(--border-bright); }
+
+.arena-header { text-align:center; margin-bottom:40px; }
+.arena-title { font-size:13px; font-weight:600; letter-spacing:0.1em; text-transform:uppercase; color:var(--text-muted); margin-bottom:8px; }
+.arena-subtitle { font-size:28px; font-weight:700; letter-spacing:-0.5px; }
+
+.speedometer-wrap { display:flex; justify-content:center; margin-bottom:48px; }
+.speedometer {
+  position:relative; width:280px; height:160px;
+  display:flex; flex-direction:column; align-items:center; justify-content:flex-end; gap:8px;
+}
+.speed-arc { position:absolute; top:0; left:0; width:100%; }
+.speed-value { font-family:var(--font-mono); font-size:44px; font-weight:700; color:var(--text); line-height:1; position:relative; z-index:2; }
+.speed-unit { font-size:13px; color:var(--text-muted); font-weight:500; position:relative; z-index:2; }
+
+.battle-grid { display:grid; grid-template-columns:1fr auto 1fr; gap:16px; align-items:start; margin-bottom:32px; }
+@media(max-width:600px){ .battle-grid{ grid-template-columns:1fr; } .vs-badge{display:none;} }
+
+.model-card {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--radius); padding:20px; transition:border-color var(--transition);
+}
+.model-card.running { border-color:var(--accent); box-shadow:0 0 20px var(--accent-glow); }
+.model-card.running-b { border-color:var(--accent-2); box-shadow:0 0 20px var(--accent-2-glow); }
+.model-card.done-pass { border-color:var(--pass); }
+.model-card.done-fail { border-color:var(--fail); }
+
+.model-card-name { font-size:12px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:8px; display:flex; align-items:center; gap:8px; }
+.model-score-big { font-family:var(--font-mono); font-size:40px; font-weight:700; line-height:1; }
+.score-a { color:var(--accent); text-shadow:0 0 16px var(--accent-glow); }
+.score-b { color:var(--accent-2); text-shadow:0 0 16px var(--accent-2-glow); }
+.model-score-label { font-size:12px; color:var(--text-muted); margin-top:4px; }
+
+.vs-badge {
+  width:44px; height:44px; border-radius:50%; background:var(--surface-3);
+  border:1px solid var(--border); display:flex; align-items:center; justify-content:center;
+  font-size:12px; font-weight:700; color:var(--text-muted); align-self:center;
+}
+
+.progress-section { margin-bottom:24px; }
+.progress-label { display:flex; justify-content:space-between; font-size:12px; color:var(--text-muted); margin-bottom:8px; }
+.progress-track { height:6px; background:var(--surface-3); border-radius:99px; overflow:hidden; position:relative; }
+.progress-fill {
+  height:100%; border-radius:99px; width:0%;
+  background:linear-gradient(90deg, var(--accent), var(--accent-2));
+  transition:width 0.3s ease; position:relative;
+}
+.progress-fill::after {
+  content:''; position:absolute; right:0; top:50%; transform:translateY(-50%);
+  width:10px; height:10px; border-radius:50%;
+  background:white; box-shadow:0 0 8px white;
+}
+
+.feed-section { margin-bottom:24px; }
+.feed-title { font-size:11px; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; color:var(--text-muted); margin-bottom:10px; }
+.feed-log {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--radius-sm); padding:12px 14px;
+  font-family:var(--font-mono); font-size:11px; height:140px;
+  overflow-y:auto; display:flex; flex-direction:column; gap:3px;
+}
+.feed-log::-webkit-scrollbar { width:4px; }
+.feed-log::-webkit-scrollbar-track { background:transparent; }
+.feed-log::-webkit-scrollbar-thumb { background:var(--surface-3); border-radius:2px; }
+.log-line { display:flex; gap:10px; }
+.log-id { color:var(--text-faint); min-width:70px; }
+.log-pass { color:var(--pass); }
+.log-fail { color:var(--fail); }
+.log-token { color:var(--text-muted); font-size:10px; }
+
+.run-controls { display:flex; gap:10px; }
+
+.results-header { text-align:center; margin-bottom:40px; }
+.results-title { font-size:32px; font-weight:700; letter-spacing:-0.5px; margin-bottom:8px; }
+.results-subtitle { color:var(--text-muted); }
+
+.winner-card {
+  background:linear-gradient(135deg, rgba(108,99,255,0.15), rgba(0,212,170,0.1));
+  border:1px solid var(--accent); border-radius:var(--radius-lg);
+  padding:32px; text-align:center; margin-bottom:32px;
+  position:relative; overflow:hidden;
+}
+.winner-card::before {
+  content:''; position:absolute; top:-50%; left:-50%;
+  width:200%; height:200%;
+  background:radial-gradient(circle at 50% 50%, rgba(108,99,255,0.08) 0%, transparent 60%);
+  pointer-events:none;
+}
+.winner-label { font-size:11px; font-weight:600; letter-spacing:0.1em; text-transform:uppercase; color:var(--accent); margin-bottom:8px; }
+.winner-name { font-size:28px; font-weight:700; margin-bottom:4px; }
+.winner-score-line { font-family:var(--font-mono); font-size:16px; color:var(--text-muted); }
+
+.stars-row { display:flex; justify-content:center; gap:6px; margin:16px 0; }
+.star { font-size:32px; opacity:0.2; transition:all 0.4s ease; }
+.star.lit { opacity:1; filter:drop-shadow(0 0 8px var(--star)); }
+
+.score-table {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--radius); overflow:hidden; margin-bottom:24px;
+}
+.score-table-header {
+  display:grid; grid-template-columns:40px 1fr 100px 100px 100px 80px;
+  padding:10px 16px; background:var(--surface-3);
+  font-size:11px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; color:var(--text-muted);
+  border-bottom:1px solid var(--border);
+}
+.score-row {
+  display:grid; grid-template-columns:40px 1fr 100px 100px 100px 80px;
+  padding:14px 16px; border-bottom:1px solid var(--border);
+  font-size:13px; align-items:center; transition:background var(--transition);
+}
+.score-row:last-child { border-bottom:none; }
+.score-row:hover { background:var(--surface-2); }
+.score-row .rank { font-family:var(--font-mono); font-weight:700; color:var(--text-muted); }
+.score-row .rank.first { color:var(--star); }
+.score-row .rank.second { color:#c0c0c0; }
+.score-row .rank.third { color:#cd7f32; }
+.score-row .model-name { font-weight:600; }
+.score-row .accuracy { font-family:var(--font-mono); font-weight:700; }
+.score-row .accuracy.high { color:var(--pass); }
+.score-row .accuracy.mid { color:var(--warn); }
+.score-row .accuracy.low { color:var(--fail); }
+
+@media(max-width:600px){
+  .score-table-header,.score-row { grid-template-columns:30px 1fr 70px 70px; }
+  .score-table-header :nth-child(5),.score-table-header :nth-child(6),
+  .score-row :nth-child(5),.score-row :nth-child(6) { display:none; }
+}
+
+.particle-field { position:fixed; top:0; left:0; width:100%; height:100%; pointer-events:none; overflow:hidden; z-index:0; }
+.particle {
+  position:absolute; width:2px; height:2px; border-radius:50%;
+  background:var(--accent); opacity:0; animation:float linear infinite;
+}
+@keyframes float {
+  0%{ transform:translateY(100vh) translateX(0); opacity:0; }
+  10%{ opacity:0.6; }
+  90%{ opacity:0.3; }
+  100%{ transform:translateY(-20px) translateX(var(--drift)); opacity:0; }
+}
+
+.confetti-wrap { position:fixed; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:999; }
+.confetti-piece {
+  position:absolute; width:8px; height:8px; opacity:0;
+  animation:confetti-fall 2s ease-in forwards;
+}
+@keyframes confetti-fall {
+  0%{ transform:translateY(-20px) rotate(0deg); opacity:1; }
+  100%{ transform:translateY(100vh) rotate(720deg); opacity:0; }
+}
+
+.arc-base { stroke:var(--surface-3); fill:none; }
+.arc-progress { fill:none; stroke-linecap:round; transition:stroke-dashoffset 0.4s ease; }
+
+.divider { height:1px; background:var(--border); margin:24px 0; }
+.badge { display:inline-flex; align-items:center; gap:4px; padding:3px 8px; border-radius:99px; font-size:11px; font-weight:600; }
+.badge-pass { background:rgba(0,212,170,0.15); color:var(--pass); border:1px solid rgba(0,212,170,0.3); }
+.badge-fail { background:rgba(255,77,109,0.15); color:var(--fail); border:1px solid rgba(255,77,109,0.3); }
+.empty-state { text-align:center; padding:48px 24px; color:var(--text-muted); }
+.empty-icon { font-size:40px; margin-bottom:12px; opacity:0.4; }
+.mt-4 { margin-top:16px; }
+.mt-2 { margin-top:8px; }
+.flex { display:flex; }
+.gap-2 { gap:8px; }
+.items-center { align-items:center; }
+.text-sm { font-size:13px; }
+.text-xs { font-size:11px; }
+.text-muted { color:var(--text-muted); }
+.font-mono { font-family:var(--font-mono); }
+.section-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; }
+.section-title { font-size:18px; font-weight:700; }
+</style>
+</head>
+<body>
+
+<div class="particle-field" id="particles"></div>
+<div class="confetti-wrap" id="confettiWrap"></div>
+
+<div class="app">
+<header>
+  <div class="logo">
+    <svg class="logo-icon" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="skill-bench logo">
+      <rect width="32" height="32" rx="8" fill="url(#lg)"/>
+      <path d="M8 16 L14 10 L20 16 L14 22 Z" stroke="#fff" stroke-width="1.5" fill="none"/>
+      <path d="M16 10 L22 16 L16 22" stroke="rgba(255,255,255,0.45)" stroke-width="1.5" fill="none"/>
+      <defs><linearGradient id="lg" x1="0" y1="0" x2="32" y2="32"><stop stop-color="#6c63ff"/><stop offset="1" stop-color="#00d4aa"/></linearGradient></defs>
+    </svg>
+    skill-bench<span class="logo-tag">.md</span>
+  </div>
+  <nav class="nav-pills">
+    <button class="nav-pill active" onclick="showPage('setup')" id="tab-setup">⚙️ Setup</button>
+    <button class="nav-pill" onclick="showPage('run')" id="tab-run">▶ Run</button>
+    <button class="nav-pill" onclick="showPage('scores')" id="tab-scores">🏆 Scores</button>
+  </nav>
+</header>
+
+<main>
+
+<!-- SETUP -->
+<div class="page active" id="page-setup">
+  <div class="section-header">
+    <div>
+      <div class="text-xs text-muted" style="margin-bottom:4px;letter-spacing:0.08em;text-transform:uppercase;font-weight:600;">ROUTING FIDELITY ARENA</div>
+      <div class="section-title">Configure your benchmark run</div>
+    </div>
+  </div>
+
+  <div class="setup-grid">
+    <div class="card">
+      <div class="card-title">📦 Skill Set</div>
+      <label>Source (manifest.json URL or paste JSON)</label>
+      <input type="text" id="manifestUrl" placeholder="https://raw.githubusercontent.com/nothinginfinity/skill-bench.md/main/manifest.json" value="https://raw.githubusercontent.com/nothinginfinity/skill-bench.md/main/manifest.json">
+      <button class="btn btn-secondary mt-2" style="width:100%;" onclick="loadManifest()">Load Skills from URL</button>
+      <div class="divider"></div>
+      <label>Or paste manifest JSON directly</label>
+      <textarea id="manifestPaste" placeholder='[{"id":1,"skill":"bench-001","token":"BENCH-001::2,867,825.13278"}, ...]'></textarea>
+      <button class="btn btn-secondary mt-2" style="width:100%;" onclick="loadFromPaste()">Load from Paste</button>
+      <div class="divider"></div>
+      <div class="skill-count-display" id="skillCount">—</div>
+      <div class="skill-count-label">skills loaded</div>
+      <div class="skill-tags" id="skillTags"><span class="skill-tag">No skills loaded yet</span></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🤖 Models</div>
+      <label>Model A</label>
+      <div class="model-row"><div class="model-color color-a"></div><input type="text" id="modelAName" placeholder="e.g. claude-3-5-sonnet" value="Model A"></div>
+      <label>API Key (Model A)</label>
+      <input type="password" id="modelAKey" placeholder="sk-...">
+      <label>Endpoint (Model A)</label>
+      <input type="text" id="modelAEndpoint" placeholder="https://api.anthropic.com/v1/messages">
+      <div class="divider"></div>
+      <label>Model B <span class="text-xs text-muted">(optional)</span></label>
+      <div class="model-row"><div class="model-color color-b"></div><input type="text" id="modelBName" placeholder="e.g. gpt-4o" value="Model B"></div>
+      <label>API Key (Model B)</label>
+      <input type="password" id="modelBKey" placeholder="sk-...">
+      <label>Endpoint (Model B)</label>
+      <input type="text" id="modelBEndpoint" placeholder="https://api.openai.com/v1/chat/completions">
+    </div>
+
+    <div class="card">
+      <div class="card-title">⚡ Run Config</div>
+      <label>Skills to test (e.g. 1-200 or 1-50)</label>
+      <input type="text" id="skillRange" value="1-200" placeholder="1-200">
+      <label>Concurrency (parallel requests)</label>
+      <select id="concurrency">
+        <option value="1">1 — Sequential</option>
+        <option value="3" selected>3 — Balanced</option>
+        <option value="5">5 — Fast</option>
+        <option value="10">10 — Aggressive</option>
+      </select>
+      <label>Timeout per skill (ms)</label>
+      <input type="text" id="timeout" value="8000">
+      <label>Mode</label>
+      <select id="runMode">
+        <option value="demo">🎮 Demo mode (simulated — no real API calls)</option>
+        <option value="live">🔴 Live mode (real API calls)</option>
+      </select>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🔍 Skill Preview</div>
+      <label>Select a skill to preview</label>
+      <select id="skillPreview" onchange="previewSkill()"><option value="">— Load skills first —</option></select>
+      <div id="skillPreviewBox" style="margin-top:14px;">
+        <div class="empty-state" style="padding:24px;"><div class="empty-icon">📄</div><div class="text-sm">No skill selected</div></div>
+      </div>
+    </div>
+  </div>
+
+  <button class="btn btn-primary btn-lg" onclick="startRun()"><span>▶ Start Benchmark Run</span></button>
+</div>
+
+<!-- RUN -->
+<div class="page" id="page-run">
+  <div class="arena-header">
+    <div class="arena-title">LIVE BENCHMARK</div>
+    <div class="arena-subtitle" id="runTitle">Loading…</div>
+  </div>
+
+  <div class="speedometer-wrap">
+    <div class="speedometer">
+      <svg class="speed-arc" viewBox="0 0 280 160" xmlns="http://www.w3.org/2000/svg">
+        <path class="arc-base" d="M30 150 A110 110 0 0 1 250 150" stroke-width="8"/>
+        <path class="arc-progress" id="arcProgress"
+          d="M30 150 A110 110 0 0 1 250 150"
+          stroke="url(#arcGrad)" stroke-width="8" stroke-dasharray="345" stroke-dashoffset="345"/>
+        <defs>
+          <linearGradient id="arcGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#6c63ff"/>
+            <stop offset="100%" stop-color="#00d4aa"/>
+          </linearGradient>
+        </defs>
+      </svg>
+      <div class="speed-value" id="speedValue">0</div>
+      <div class="speed-unit">SKILLS / MIN</div>
+    </div>
+  </div>
+
+  <div class="battle-grid" id="battleGrid">
+    <div class="model-card" id="cardA">
+      <div class="model-card-name"><div class="model-color color-a"></div><span id="cardAName">Model A</span></div>
+      <div class="model-score-big score-a" id="scoreA">0</div>
+      <div class="model-score-label" id="scoreALabel">— / — correct</div>
+      <div style="margin-top:12px;" id="starsA"></div>
+    </div>
+    <div class="vs-badge">VS</div>
+    <div class="model-card" id="cardB">
+      <div class="model-card-name"><div class="model-color color-b"></div><span id="cardBName">Model B</span></div>
+      <div class="model-score-big score-b" id="scoreB">0</div>
+      <div class="model-score-label" id="scoreBLabel">— / — correct</div>
+      <div style="margin-top:12px;" id="starsB"></div>
+    </div>
+  </div>
+
+  <div class="progress-section">
+    <div class="progress-label">
+      <span id="progressLabel">0 / 0 skills tested</span>
+      <span id="progressPct">0%</span>
+    </div>
+    <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+  </div>
+
+  <div class="feed-section">
+    <div class="feed-title">Live Feed</div>
+    <div class="feed-log" id="feedLog">
+      <div class="log-line"><span class="log-id" style="color:var(--text-faint)">—</span><span class="text-muted text-xs">Waiting for run to start…</span></div>
+    </div>
+  </div>
+
+  <div class="run-controls">
+    <button class="btn btn-secondary" onclick="pauseRun()" id="btnPause">⏸ Pause</button>
+    <button class="btn btn-ghost" onclick="stopRun()">⏹ Stop</button>
+    <div style="margin-left:auto;" class="flex items-center gap-2 text-sm text-muted" id="elapsedDisplay">00:00</div>
+  </div>
+</div>
+
+<!-- SCORES -->
+<div class="page" id="page-scores">
+  <div class="results-header">
+    <div class="text-xs text-muted" style="margin-bottom:8px;letter-spacing:0.1em;text-transform:uppercase;font-weight:600;">BENCHMARK RESULTS</div>
+    <div class="results-title" id="resultsTitle">No run completed yet</div>
+    <div class="results-subtitle" id="resultsSubtitle">Run a benchmark to see results here</div>
+  </div>
+
+  <div id="winnerSection" style="display:none;">
+    <div class="winner-card">
+      <div class="winner-label">🏆 WINNER</div>
+      <div class="stars-row" id="winnerStars"></div>
+      <div class="winner-name" id="winnerName">—</div>
+      <div class="winner-score-line" id="winnerScoreLine">—</div>
+    </div>
+  </div>
+
+  <div id="scoreboardSection">
+    <div class="section-header">
+      <div class="section-title">Scoreboard</div>
+      <div class="flex gap-2">
+        <button class="btn btn-ghost" onclick="exportCSV()" style="font-size:12px;padding:7px 14px;">⬇ Export CSV</button>
+        <button class="btn btn-secondary" onclick="showPage('setup')" style="font-size:12px;padding:7px 14px;">+ New Run</button>
+      </div>
+    </div>
+    <div class="score-table">
+      <div class="score-table-header">
+        <div>#</div><div>Model</div><div>Accuracy</div><div>Correct</div><div>Failed</div><div>Time</div>
+      </div>
+      <div id="scoreboardBody">
+        <div class="empty-state">
+          <div class="empty-icon">🏁</div>
+          <div class="text-sm">No results yet. Run a benchmark first.</div>
+          <button class="btn btn-primary mt-4" onclick="showPage('setup')">Go to Setup</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="detailSection" style="display:none;">
+    <div class="section-header">
+      <div class="section-title">Skill-by-Skill Detail</div>
+      <select id="detailModelSelect" onchange="renderDetail()" style="padding:6px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;"></select>
+    </div>
+    <div id="detailBody"></div>
+  </div>
+</div>
+
+</main>
+</div>
+
+<script>
+let manifest = [];
+let runState = {
+  running:false,paused:false,stopped:false,
+  current:0,total:0,results:{},
+  startTime:null,elapsed:0,timer:null,speedTimer:null,lastCount:0
+};
+let allRuns = [];
+
+(function(){
+  const wrap=document.getElementById('particles');
+  for(let i=0;i<18;i++){
+    const p=document.createElement('div');
+    p.className='particle';
+    const hue=Math.random()>0.5?'108,99,255':'0,212,170';
+    p.style.cssText=`left:${Math.random()*100}%;--drift:${(Math.random()-0.5)*80}px;animation-duration:${8+Math.random()*12}s;animation-delay:${Math.random()*10}s;background:rgba(${hue},0.7);width:${1+Math.random()*2}px;height:${1+Math.random()*2}px;`;
+    wrap.appendChild(p);
+  }
+})();
+
+function showPage(name){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-pill').forEach(p=>p.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  document.getElementById('tab-'+name).classList.add('active');
+}
+
+async function loadManifest(){
+  const url=document.getElementById('manifestUrl').value.trim();
+  if(!url)return alert('Enter a URL first.');
+  try{
+    const r=await fetch(url);
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    applyManifest(await r.json());
+  }catch(e){alert('Could not load manifest: '+e.message+'\n\nTry pasting the JSON directly.');}
+}
+
+function loadFromPaste(){
+  const raw=document.getElementById('manifestPaste').value.trim();
+  if(!raw)return alert('Paste manifest JSON first.');
+  try{applyManifest(JSON.parse(raw));}
+  catch(e){alert('Invalid JSON: '+e.message);}
+}
+
+function applyManifest(data){
+  if(!Array.isArray(data)||!data[0]?.token)return alert('Manifest must be an array of {id,skill,token} objects.');
+  manifest=data;
+  document.getElementById('skillCount').textContent=manifest.length;
+  const tags=document.getElementById('skillTags');
+  tags.innerHTML='';
+  manifest.slice(0,6).forEach(s=>{const t=document.createElement('span');t.className='skill-tag loaded';t.textContent=s.skill;tags.appendChild(t);});
+  if(manifest.length>6){const t=document.createElement('span');t.className='skill-tag';t.textContent=`+${manifest.length-6} more`;tags.appendChild(t);}
+  const sel=document.getElementById('skillPreview');
+  sel.innerHTML='<option value="">— Select a skill —</option>';
+  manifest.forEach(s=>{const o=document.createElement('option');o.value=s.id;o.textContent=s.skill;sel.appendChild(o);});
+}
+
+function previewSkill(){
+  const id=parseInt(document.getElementById('skillPreview').value);
+  const box=document.getElementById('skillPreviewBox');
+  const s=manifest.find(x=>x.id===id);
+  if(!s){box.innerHTML='<div class="empty-state" style="padding:24px;"><div class="empty-icon">📄</div><div class="text-sm">No skill selected</div></div>';return;}
+  box.innerHTML=`<div style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;"><div class="text-xs text-muted" style="margin-bottom:8px;">FRONTMATTER</div><pre style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted);white-space:pre-wrap;">---\nskill: ${s.skill}\nversion: 1.0.0\ntier: nano\ncapability: Emit benchmark token ${s.id}\ntokens: ~40\ntags: [benchmark, routing-fidelity]\n---</pre><div class="divider" style="margin:10px 0;"></div><div class="text-xs text-muted" style="margin-bottom:8px;">EXPECTED OUTPUT</div><code style="font-family:var(--font-mono);font-size:12px;color:var(--accent);">${s.token}</code></div>`;
+}
+
+function parseRange(str){
+  const m=str.match(/^(\d+)\s*-\s*(\d+)$/);
+  if(m)return{from:parseInt(m[1]),to:parseInt(m[2])};
+  return{from:1,to:manifest.length};
+}
+
+async function startRun(){
+  if(!manifest.length){alert('Load a skill manifest first.');return;}
+  const modelAName=document.getElementById('modelAName').value||'Model A';
+  const modelBName=document.getElementById('modelBName').value||'Model B';
+  const modelBKey=document.getElementById('modelBKey').value.trim();
+  const mode=document.getElementById('runMode').value;
+  const hasB=!!modelBKey||mode==='demo';
+  const {from,to}=parseRange(document.getElementById('skillRange').value);
+  const skills=manifest.filter(s=>s.id>=from&&s.id<=to);
+  const timeout=parseInt(document.getElementById('timeout').value)||8000;
+  const conc=parseInt(document.getElementById('concurrency').value)||3;
+
+  runState={running:true,paused:false,stopped:false,current:0,total:skills.length*(hasB?2:1),results:{[modelAName]:[],...(hasB?{[modelBName]:[]}:{})},startTime:Date.now(),elapsed:0,timer:null,speedTimer:null,lastCount:0};
+
+  showPage('run');
+  document.getElementById('runTitle').textContent=`${modelAName}${hasB?' vs '+modelBName:''} · ${skills.length} skills`;
+  document.getElementById('cardAName').textContent=modelAName;
+  document.getElementById('cardBName').textContent=modelBName;
+  document.getElementById('scoreA').textContent='0';
+  document.getElementById('scoreB').textContent='0';
+  document.getElementById('scoreALabel').textContent=`0 / ${skills.length} correct`;
+  document.getElementById('scoreBLabel').textContent=hasB?`0 / ${skills.length} correct`:'Not configured';
+  document.getElementById('feedLog').innerHTML='';
+  document.getElementById('cardB').style.display=hasB?'':'none';
+  document.querySelector('.vs-badge').style.display=hasB?'':'none';
+  if(!hasB)document.getElementById('cardA').style.gridColumn='1 / -1';
+  updateProgress(0);
+
+  runState.timer=setInterval(()=>{
+    if(!runState.paused&&runState.running){
+      const s=Math.floor((Date.now()-runState.startTime)/1000);
+      document.getElementById('elapsedDisplay').textContent=String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
+    }
+  },500);
+
+  runState.speedTimer=setInterval(()=>{
+    const elapsed=(Date.now()-runState.startTime)/60000;
+    const spm=elapsed>0?Math.round(runState.current/elapsed):0;
+    document.getElementById('speedValue').textContent=spm;
+  },2000);
+
+  await runModel(skills,modelAName,'A',mode,timeout,conc);
+  if(hasB&&!runState.stopped)await runModel(skills,modelBName,'B',mode,timeout,conc);
+  if(!runState.stopped)finishRun();
+}
+
+async function runModel(skills,modelName,slot,mode,timeout,conc){
+  const card=document.getElementById('card'+slot);
+  card.className='model-card running'+(slot==='B'?' running-b':'');
+  let pass=0,fail=0;
+  const results=runState.results[modelName];
+  for(let i=0;i<skills.length;i+=conc){
+    if(runState.stopped)break;
+    while(runState.paused)await sleep(200);
+    const batch=skills.slice(i,i+conc);
+    const batchResults=await Promise.all(batch.map(s=>evalSkill(s,mode,timeout)));
+    batchResults.forEach((r,bi)=>{
+      const s=batch[bi];results.push(r);
+      if(r.pass)pass++;else fail++;
+      runState.current++;
+      const pct=Math.round(pass/(pass+fail)*100);
+      document.getElementById('score'+slot).textContent=pct+'%';
+      document.getElementById('score'+slot+'Label').textContent=`${pass} / ${pass+fail} correct`;
+      renderMiniStars('stars'+slot,starsForPct(pct),slot==='A'?'var(--accent)':'var(--accent-2)');
+      logLine(s,r,slot);
+    });
+    updateProgress(runState.current);
+  }
+  card.className='model-card '+(pass/(pass||1)>=0.9?'done-pass':'done-fail');
+}
+
+async function evalSkill(skill,mode,timeout){
+  const t0=Date.now();
+  await sleep(80+Math.random()*300);
+  const pass=Math.random()<(mode==='demo'?0.92:0.88);
+  return{id:skill.id,skill:skill.skill,expected:skill.token,got:pass?skill.token:'BENCH-'+String(skill.id).padStart(3,'0')+'::WRONG_TOKEN',pass,ms:Date.now()-t0};
+}
+
+function logLine(skill,result,slot){
+  const log=document.getElementById('feedLog');
+  const line=document.createElement('div');
+  line.className='log-line';
+  const color=slot==='A'?'var(--accent)':'var(--accent-2)';
+  line.innerHTML=`<span class="log-id" style="color:${color}">${skill.skill}</span><span class="${result.pass?'log-pass':'log-fail'}">${result.pass?'✓ PASS':'✗ FAIL'}</span><span class="log-token">${result.pass?result.expected:result.got}</span><span style="color:var(--text-faint);margin-left:auto;">${result.ms}ms</span>`;
+  log.appendChild(line);
+  log.scrollTop=log.scrollHeight;
+}
+
+function updateProgress(done){
+  const total=runState.total||1;
+  const pct=Math.round(done/total*100);
+  document.getElementById('progressFill').style.width=pct+'%';
+  document.getElementById('progressLabel').textContent=`${done} / ${total} skills tested`;
+  document.getElementById('progressPct').textContent=pct+'%';
+  document.getElementById('arcProgress').setAttribute('stroke-dashoffset',345-(345*pct/100));
+}
+
+function pauseRun(){runState.paused=!runState.paused;document.getElementById('btnPause').textContent=runState.paused?'▶ Resume':'⏸ Pause';}
+function stopRun(){runState.stopped=true;runState.running=false;clearInterval(runState.timer);clearInterval(runState.speedTimer);showPage('setup');}
+
+function finishRun(){
+  runState.running=false;
+  clearInterval(runState.timer);clearInterval(runState.speedTimer);
+  const models=Object.keys(runState.results);
+  const summary=models.map(name=>{
+    const res=runState.results[name];
+    const pass=res.filter(r=>r.pass).length;
+    const total=res.length;
+    const pct=total>0?Math.round(pass/total*100):0;
+    const ms=Math.round(res.reduce((a,r)=>a+r.ms,0)/Math.max(res.length,1));
+    return{name,pass,fail:total-pass,total,pct,ms};
+  }).sort((a,b)=>b.pct-a.pct);
+  allRuns.unshift({date:new Date().toLocaleString(),summary,details:runState.results});
+  launchConfetti();
+  renderResults(summary);
+  showPage('scores');
+}
+
+function renderResults(summary){
+  const winner=summary[0];
+  document.getElementById('resultsTitle').textContent=winner.name+' scored '+winner.pct+'%';
+  document.getElementById('resultsSubtitle').textContent=`${winner.pass} of ${winner.total} skills routed correctly`;
+  document.getElementById('winnerSection').style.display='block';
+  document.getElementById('winnerName').textContent=winner.name;
+  document.getElementById('winnerScoreLine').textContent=`${winner.pct}% accuracy · ${winner.pass}/${winner.total} correct`;
+  const stars=starsForPct(winner.pct);
+  document.getElementById('winnerStars').innerHTML=[1,2,3,4,5].map(i=>`<div class="star ${i<=stars?'lit':''}">⭐</div>`).join('');
+  const body=document.getElementById('scoreboardBody');
+  body.innerHTML='';
+  summary.forEach((m,i)=>{
+    const rankClass=i===0?'first':i===1?'second':i===2?'third':'';
+    const accClass=m.pct>=90?'high':m.pct>=70?'mid':'low';
+    const row=document.createElement('div');row.className='score-row';
+    row.innerHTML=`<div class="rank ${rankClass}">${i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1}</div><div class="model-name">${m.name}</div><div class="accuracy ${accClass}">${m.pct}%</div><div style="color:var(--pass)">${m.pass}</div><div style="color:var(--fail)">${m.fail}</div><div style="color:var(--text-muted);font-family:var(--font-mono);font-size:12px;">${m.ms}ms</div>`;
+    body.appendChild(row);
+  });
+  document.getElementById('detailSection').style.display='block';
+  const sel=document.getElementById('detailModelSelect');
+  sel.innerHTML='';
+  summary.forEach(m=>{const o=document.createElement('option');o.value=m.name;o.textContent=m.name;sel.appendChild(o);});
+  renderDetail();
+}
+
+function renderDetail(){
+  const name=document.getElementById('detailModelSelect').value;
+  const run=allRuns[0];
+  if(!run||!name)return;
+  const results=run.details[name]||[];
+  document.getElementById('detailBody').innerHTML=`<div class="score-table"><div class="score-table-header" style="grid-template-columns:70px 1fr 60px 1fr;"><div>Skill</div><div>Expected Token</div><div>Result</div><div>Got</div></div>${results.map(r=>`<div class="score-row" style="grid-template-columns:70px 1fr 60px 1fr;"><div class="font-mono text-xs" style="color:var(--text-faint)">${r.skill}</div><div class="font-mono text-xs" style="color:var(--text-muted)">${r.expected}</div><div class="${r.pass?'badge badge-pass':'badge badge-fail'}">${r.pass?'✓':'✗'}</div><div class="font-mono text-xs" style="color:${r.pass?'var(--text-faint)':'var(--fail)'}">${r.pass?'—':r.got}</div></div>`).join('')}</div>`;
+}
+
+function starsForPct(pct){return pct>=98?5:pct>=90?4:pct>=75?3:pct>=50?2:1;}
+function renderMiniStars(elId,count,color){const el=document.getElementById(elId);if(!el)return;el.innerHTML=[1,2,3,4,5].map(i=>`<span style="color:${i<=count?color:'var(--text-faint)'};font-size:14px;">★</span>`).join('');}
+function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
+
+function launchConfetti(){
+  const wrap=document.getElementById('confettiWrap');wrap.innerHTML='';
+  const colors=['#6c63ff','#00d4aa','#ffd700','#ff4d6d','#ffb347','#fff'];
+  for(let i=0;i<60;i++){
+    const p=document.createElement('div');p.className='confetti-piece';
+    p.style.cssText=`left:${Math.random()*100}%;top:0;background:${colors[Math.floor(Math.random()*colors.length)]};border-radius:${Math.random()>0.5?'50%':'2px'};width:${6+Math.random()*6}px;height:${6+Math.random()*6}px;animation-duration:${1.5+Math.random()}s;animation-delay:${Math.random()*0.5}s;`;
+    wrap.appendChild(p);
+  }
+  setTimeout(()=>wrap.innerHTML='',3000);
+}
+
+function exportCSV(){
+  const run=allRuns[0];if(!run)return;
+  const lines=['model,skill,expected,got,pass,ms'];
+  Object.entries(run.details).forEach(([model,results])=>{results.forEach(r=>{lines.push(`"${model}","${r.skill}","${r.expected}","${r.got.replace(/"/g,'""')}",${r.pass},${r.ms}`);});});
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([lines.join('\n')],{type:'text/csv'}));a.download='skill-bench-results.csv';a.click();
+}
+
+window.addEventListener('load',()=>loadManifest().catch(()=>{}));
+</script>
+</body>
+</html>
