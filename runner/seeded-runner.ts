@@ -1,12 +1,13 @@
-import crypto from "crypto";
-import fs from "fs";
-import path from "path";
-import { createRouter, Router, RouterConfig } from "./router.js";
+import crypto from 'crypto';
+import fs from 'fs';
+import { Router, sleep } from './router.js';
 
 export interface SeededRunConfig {
   manifestFile: string;
   outputCSV: string;
   router: Router;
+  /** ms to sleep between requests. Default 0. Pass 2000 for Groq free tier. */
+  delayMs?: number;
 }
 
 export interface SeededResult {
@@ -25,10 +26,10 @@ export function generateRunSeed(): string {
 
 export function computeSeededToken(seed: string, skillId: string): string {
   return (
-    "BENCH-" +
+    'BENCH-' +
     skillId +
-    "::" +
-    crypto.createHmac("sha256", seed).update(skillId).digest("hex").slice(0, 8)
+    '::' +
+    crypto.createHmac('sha256', seed).update(skillId).digest('hex').slice(0, 8)
   );
 }
 
@@ -44,27 +45,31 @@ function buildSeededPrompt(skillId: string, seed: string): string {
 }
 
 export async function runSeededSuite(config: SeededRunConfig): Promise<SeededResult[]> {
-  const seed = generateRunSeed();
-  const manifest = JSON.parse(fs.readFileSync(config.manifestFile, "utf-8"));
+  const seed     = generateRunSeed();
+  const manifest = JSON.parse(fs.readFileSync(config.manifestFile, 'utf-8'));
   const results: SeededResult[] = [];
+  const delayMs  = config.delayMs ?? 0;
 
   console.log(`\n[seeded-runner] seed=${seed}`);
   console.log(`[seeded-runner] model=${config.router.config.model} provider=${config.router.config.provider}`);
+  if (delayMs > 0) console.log(`[seeded-runner] delay=${delayMs}ms per request`);
   console.log(`[seeded-runner] running ${manifest.length} skills...\n`);
 
   for (const skill of manifest) {
+    if (delayMs > 0 && results.length > 0) await sleep(delayMs);
+
     const expected = computeSeededToken(seed, skill.skill);
-    const prompt = buildSeededPrompt(skill.skill, seed);
-    let actual = "";
+    const prompt   = buildSeededPrompt(skill.skill, seed);
+    let actual = '';
     let latency_ms = 0;
     let prompt_tokens: number | undefined;
     let completion_tokens: number | undefined;
 
     try {
-      const resp = await config.router.invoke(prompt);
-      actual = resp.text;
-      latency_ms = resp.latency_ms;
-      prompt_tokens = resp.prompt_tokens;
+      const resp     = await config.router.invoke(prompt);
+      actual         = resp.text;
+      latency_ms     = resp.latency_ms;
+      prompt_tokens  = resp.prompt_tokens;
       completion_tokens = resp.completion_tokens;
     } catch (err) {
       actual = `ERROR: ${(err as Error).message}`;
@@ -72,20 +77,18 @@ export async function runSeededSuite(config: SeededRunConfig): Promise<SeededRes
 
     const pass = actual.trim() === expected;
     if (!pass) console.log(`FAIL ${skill.skill}  expected=${expected}  actual=${actual}`);
-
     results.push({ skill: skill.skill, expected, actual, pass, latency_ms, prompt_tokens, completion_tokens });
   }
 
-  const passed = results.filter((r) => r.pass).length;
+  const passed = results.filter(r => r.pass).length;
   console.log(`\n[seeded-runner] ${passed}/${results.length} passed (${((passed / results.length) * 100).toFixed(1)}%)`);
 
   const csv = [
-    "skill,expected,actual,pass,latency_ms,prompt_tokens,completion_tokens",
-    ...results.map(
-      (r) =>
-        `${r.skill},${r.expected},${r.actual},${r.pass},${r.latency_ms},${r.prompt_tokens ?? ""},${r.completion_tokens ?? ""}`
+    'skill,expected,actual,pass,latency_ms,prompt_tokens,completion_tokens',
+    ...results.map(r =>
+      `${r.skill},${r.expected},${r.actual},${r.pass},${r.latency_ms},${r.prompt_tokens ?? ''},${r.completion_tokens ?? ''}`
     ),
-  ].join("\n");
+  ].join('\n');
   fs.writeFileSync(config.outputCSV, csv);
   console.log(`[seeded-runner] results written to ${config.outputCSV}`);
 

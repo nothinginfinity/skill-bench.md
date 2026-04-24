@@ -1,17 +1,26 @@
 {
   "name": "skill-bench-runner",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "LLM router benchmark runner for skill-bench.md",
   "type": "module",
   "scripts": {
-    "mock": "tsx run.ts --suite routing-flat --provider mock --model mock",
-    "mock:progressive": "tsx run.ts --suite loading-progressive --provider mock --model mock",
-    "bench:openai": "tsx run.ts --suite routing-flat --provider openai --model gpt-4o --key $OPENAI_API_KEY",
-    "bench:openai:progressive": "tsx run.ts --suite loading-progressive --provider openai --model gpt-4o --key $OPENAI_API_KEY",
-    "bench:anthropic": "tsx run.ts --suite routing-flat --provider anthropic --model claude-3-7-sonnet-20250219 --key $ANTHROPIC_API_KEY",
+    "mock":                        "tsx run.ts --suite routing-flat --provider mock --model mock",
+    "mock:progressive":            "tsx run.ts --suite loading-progressive --provider mock --model mock",
+
+    "bench:openai":                "tsx run.ts --suite routing-flat --provider openai --model gpt-4o --key $OPENAI_API_KEY",
+    "bench:openai:progressive":    "tsx run.ts --suite loading-progressive --provider openai --model gpt-4o --key $OPENAI_API_KEY",
+
+    "bench:anthropic":             "tsx run.ts --suite routing-flat --provider anthropic --model claude-3-7-sonnet-20250219 --key $ANTHROPIC_API_KEY",
     "bench:anthropic:progressive": "tsx run.ts --suite loading-progressive --provider anthropic --model claude-3-7-sonnet-20250219 --key $ANTHROPIC_API_KEY",
-    "bench:gemini": "tsx run.ts --suite routing-flat --provider gemini --model gemini-2.0-flash --key $GEMINI_API_KEY",
-    "bench:gemini:progressive": "tsx run.ts --suite loading-progressive --provider gemini --model gemini-2.0-flash --key $GEMINI_API_KEY"
+
+    "bench:gemini":                "tsx run.ts --suite routing-flat --provider gemini --model gemini-2.0-flash --key $GEMINI_API_KEY",
+    "bench:gemini:progressive":    "tsx run.ts --suite loading-progressive --provider gemini --model gemini-2.0-flash --key $GEMINI_API_KEY",
+
+    "bench:deepseek":              "tsx run.ts --suite routing-flat --provider deepseek --model deepseek-reasoner --key $DEEPSEEK_API_KEY",
+    "bench:deepseek:progressive":  "tsx run.ts --suite loading-progressive --provider deepseek --model deepseek-reasoner --key $DEEPSEEK_API_KEY",
+
+    "bench:groq":                  "tsx run.ts --suite routing-flat --provider groq --model llama-3.1-8b-instant --key $GROQ_API_KEY --delay 2000",
+    "bench:groq:progressive":      "tsx run.ts --suite loading-progressive --provider groq --model llama-3.1-8b-instant --key $GROQ_API_KEY --delay 2000"
   },
   "dependencies": {},
   "devDependencies": {

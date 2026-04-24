@@ -2,17 +2,25 @@
  * router.ts — Unified LLM router adapter for skill-bench.md
  *
  * Supports:
- *   - OpenAI (gpt-4o, gpt-4-turbo, etc.)
- *   - Anthropic (claude-3-5-sonnet, claude-3-7-sonnet, etc.)
- *   - Gemini (gemini-2.0-flash, gemini-1.5-pro, etc.)
- *   - Mock (deterministic, for CI / offline validation)
+ *   - OpenAI  (gpt-4o, gpt-4-turbo, …)
+ *   - Anthropic (claude-3-5-sonnet, claude-3-7-sonnet, …)
+ *   - Gemini  (gemini-2.0-flash, gemini-1.5-pro, …)
+ *   - DeepSeek (deepseek-chat, deepseek-reasoner)
+ *   - Groq    (llama-3.1-8b-instant, mixtral-8x7b, …)
+ *   - Mock    (deterministic, for CI / offline validation)
  *
  * Usage:
  *   const router = createRouter({ provider: 'openai', model: 'gpt-4o', apiKey: process.env.OPENAI_API_KEY! });
  *   const response = await router.invoke(prompt);
+ *
+ * Fix log:
+ *   2026-04-24  Fix 3 — DeepSeek reasoning_content fallback:
+ *               deepseek-reasoner returns content='' with the real answer
+ *               in message.reasoning_content. Fall back to that field when
+ *               choices[0].message.content is empty.
  */
 
-export type Provider = 'openai' | 'anthropic' | 'gemini' | 'mock';
+export type Provider = 'openai' | 'anthropic' | 'gemini' | 'deepseek' | 'groq' | 'mock';
 
 export interface RouterConfig {
   provider: Provider;
@@ -40,26 +48,32 @@ export interface Router {
   config: RouterConfig;
 }
 
-const DEFAULT_SYSTEM = `You are a skill routing agent in a benchmark test.
-When given a prompt asking you to execute a skill, you MUST return ONLY the token string.
-Do not explain. Do not add punctuation. Output only the token.`;
+const DEFAULT_SYSTEM =
+  `You are a skill routing agent in a benchmark test.\n` +
+  `When given a prompt asking you to execute a skill, you MUST return ONLY the token string.\n` +
+  `Do not explain. Do not add punctuation. Output only the token.`;
 
 // ---------------------------------------------------------------------------
-// OpenAI
+// Shared: OpenAI-compatible chat endpoint (used by OpenAI, Groq, DeepSeek)
 // ---------------------------------------------------------------------------
-async function invokeOpenAI(prompt: string, config: RouterConfig): Promise<RouterResponse> {
+async function invokeOpenAICompat(
+  baseUrl: string,
+  prompt: string,
+  config: RouterConfig,
+  provider: Provider
+): Promise<RouterResponse> {
   const t0 = Date.now();
   const body = {
     model: config.model,
     max_tokens: config.maxTokens ?? 256,
     messages: [
       { role: 'system', content: config.systemPrompt ?? DEFAULT_SYSTEM },
-      { role: 'user', content: prompt },
+      { role: 'user',   content: prompt },
     ],
   };
 
   const res = await fetchWithTimeout(
-    'https://api.openai.com/v1/chat/completions',
+    `${baseUrl}/chat/completions`,
     {
       method: 'POST',
       headers: {
@@ -71,16 +85,47 @@ async function invokeOpenAI(prompt: string, config: RouterConfig): Promise<Route
     config.timeoutMs ?? 30_000
   );
 
-  if (!res.ok) throw new Error(`OpenAI ${res.status}: ${await res.text()}`);
+  if (!res.ok) throw new Error(`${provider} HTTP ${res.status}: ${await res.text()}`);
   const json = await res.json();
+
+  const msg = json.choices[0].message;
+
+  // FIX 3: DeepSeek-Reasoner returns content='' and the real answer in
+  // reasoning_content. Fall back to that field when content is empty.
+  const text: string =
+    (msg.content && msg.content.trim().length > 0)
+      ? msg.content.trim()
+      : (msg.reasoning_content ?? '').trim();
+
   return {
-    text: json.choices[0].message.content.trim(),
+    text,
     latency_ms: Date.now() - t0,
-    prompt_tokens: json.usage?.prompt_tokens,
+    prompt_tokens:     json.usage?.prompt_tokens,
     completion_tokens: json.usage?.completion_tokens,
     model: config.model,
-    provider: 'openai',
+    provider,
   };
+}
+
+// ---------------------------------------------------------------------------
+// OpenAI
+// ---------------------------------------------------------------------------
+async function invokeOpenAI(prompt: string, config: RouterConfig): Promise<RouterResponse> {
+  return invokeOpenAICompat('https://api.openai.com/v1', prompt, config, 'openai');
+}
+
+// ---------------------------------------------------------------------------
+// Groq  (OpenAI-compatible, different base URL)
+// ---------------------------------------------------------------------------
+async function invokeGroq(prompt: string, config: RouterConfig): Promise<RouterResponse> {
+  return invokeOpenAICompat('https://api.groq.com/openai/v1', prompt, config, 'groq');
+}
+
+// ---------------------------------------------------------------------------
+// DeepSeek  (OpenAI-compatible, different base URL + reasoning_content fix)
+// ---------------------------------------------------------------------------
+async function invokeDeepSeek(prompt: string, config: RouterConfig): Promise<RouterResponse> {
+  return invokeOpenAICompat('https://api.deepseek.com/v1', prompt, config, 'deepseek');
 }
 
 // ---------------------------------------------------------------------------
@@ -109,12 +154,12 @@ async function invokeAnthropic(prompt: string, config: RouterConfig): Promise<Ro
     config.timeoutMs ?? 30_000
   );
 
-  if (!res.ok) throw new Error(`Anthropic ${res.status}: ${await res.text()}`);
+  if (!res.ok) throw new Error(`Anthropic HTTP ${res.status}: ${await res.text()}`);
   const json = await res.json();
   return {
     text: json.content[0].text.trim(),
     latency_ms: Date.now() - t0,
-    prompt_tokens: json.usage?.input_tokens,
+    prompt_tokens:     json.usage?.input_tokens,
     completion_tokens: json.usage?.output_tokens,
     model: config.model,
     provider: 'anthropic',
@@ -126,20 +171,22 @@ async function invokeAnthropic(prompt: string, config: RouterConfig): Promise<Ro
 // ---------------------------------------------------------------------------
 async function invokeGemini(prompt: string, config: RouterConfig): Promise<RouterResponse> {
   const t0 = Date.now();
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${config.model}:generateContent?key=${config.apiKey}`;
+  const endpoint =
+    `https://generativelanguage.googleapis.com/v1beta/models/` +
+    `${config.model}:generateContent?key=${config.apiKey}`;
   const body = {
     system_instruction: { parts: [{ text: config.systemPrompt ?? DEFAULT_SYSTEM }] },
     contents: [{ parts: [{ text: prompt }] }],
     generationConfig: { maxOutputTokens: config.maxTokens ?? 256 },
   };
 
-  const res = await fetchWithTimeout(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  }, config.timeoutMs ?? 30_000);
+  const res = await fetchWithTimeout(
+    endpoint,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
+    config.timeoutMs ?? 30_000
+  );
 
-  if (!res.ok) throw new Error(`Gemini ${res.status}: ${await res.text()}`);
+  if (!res.ok) throw new Error(`Gemini HTTP ${res.status}: ${await res.text()}`);
   const json = await res.json();
   return {
     text: json.candidates[0].content.parts[0].text.trim(),
@@ -150,12 +197,10 @@ async function invokeGemini(prompt: string, config: RouterConfig): Promise<Route
 }
 
 // ---------------------------------------------------------------------------
-// Mock (deterministic, reads skill token from progressive-manifest or manifest)
+// Mock  (deterministic, reads token directly from prompt)
 // ---------------------------------------------------------------------------
 function invokeMock(prompt: string, config: RouterConfig): RouterResponse {
-  // Extract token directly from the prompt (format: "...expected token: BENCH-XXX...").
-  // Falls back to echo for static routing suite.
-  const tokenMatch = prompt.match(/(BENCH-[\w::.]+)/);
+  const tokenMatch = prompt.match(/(BENCH-[\w:.]+)/);
   return {
     text: tokenMatch ? tokenMatch[1] : 'BENCH-000::MOCK',
     latency_ms: 5,
@@ -173,6 +218,8 @@ export function createRouter(config: RouterConfig): Router {
       case 'openai':    return invokeOpenAI(prompt, config);
       case 'anthropic': return invokeAnthropic(prompt, config);
       case 'gemini':    return invokeGemini(prompt, config);
+      case 'deepseek':  return invokeDeepSeek(prompt, config);
+      case 'groq':      return invokeGroq(prompt, config);
       case 'mock':      return invokeMock(prompt, config);
       default: throw new Error(`Unknown provider: ${(config as RouterConfig).provider}`);
     }
@@ -191,4 +238,9 @@ async function fetchWithTimeout(url: string, options: RequestInit, ms: number): 
   } finally {
     clearTimeout(id);
   }
+}
+
+/** Sleep helper used by run.ts for rate-limiting (Fix 2) */
+export function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
