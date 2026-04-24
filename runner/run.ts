@@ -6,38 +6,48 @@
  *   npx tsx runner/run.ts [flags]
  *
  * Core flags:
- *   --suite     routing-flat | routing-seeded | loading-progressive | loading-mixed-depth
- *   --provider  openai | anthropic | gemini | deepseek | groq | cerebras | mock
- *   --model     model name for the chosen provider
- *   --key       API key
- *   --delay     ms between requests (default 0). Groq/Cerebras free tier: 2000
+ *   --suite        routing-flat | routing-seeded | loading-progressive | loading-mixed-depth
+ *   --provider     openai | anthropic | gemini | deepseek | groq | cerebras | mock
+ *   --model        model name for the chosen provider
+ *   --key          API key (or set env var)
+ *   --delay        ms to wait after each request completes (default 0)
+ *   --concurrency  max in-flight requests at once (default 1 = sequential)
  *
  * Mode flag (routing suites only):
- *   --mode      echo   — prompt shows the expected token inline (default, easiest)
- *               recall — prompt hides the token; model must return it from context
- *               seeded — HMAC token computed per-run, zero memorisation advantage
+ *   --mode         echo   — prompt shows expected token inline (default)
+ *                  recall — prompt hides token; model must return from context
+ *                  seeded — HMAC token per run, zero memorisation advantage
  *
  * Extra flags:
- *   --show-token  (echo mode only) alias for --mode echo, for backwards compat
- *   --limit N     only run first N skills (useful for quick smoke tests)
+ *   --limit N      only run first N skills (smoke test)
+ *
+ * Safe concurrency defaults by provider:
+ *   Groq / Cerebras free tier  : --concurrency 1 --delay 2000
+ *   OpenAI / Anthropic / Gemini : --concurrency 5 --delay 0
+ *   DeepSeek                    : --concurrency 3 --delay 0
  *
  * Fix log:
+ *   2026-04-24  fix  — concurrency guard: semaphore limits in-flight requests.
+ *               Concurrent fire without semaphore caused 429 flood on Groq
+ *               (167/200 errors) and echo-stuck ghost tokens on OpenAI
+ *               (190/200 bench-001 token echoed, latency 192ms→800ms+).
  *   2026-04-24  Fix 1 — token-echo prevention via --mode recall/seeded
  *   2026-04-24  Fix 2 — 429 retry with exponential backoff in router.ts
- *   2026-04-24  Fix 3 — placeholder hallucination detection + HALLUCINATED flag in CSV
+ *   2026-04-24  Fix 3 — placeholder hallucination detection + HALLUCINATED flag
  *   2026-04-24  feat  — --mode selector, --limit flag, MODE column in CSV
  */
 
-import fs from 'fs';
+import fs   from 'fs';
 import path from 'path';
 import { createRouter, Provider, RouterConfig, sleep } from './router.js';
-import { runSeededSuite } from './seeded-runner.js';
+import { runSeededSuite }      from './seeded-runner.js';
 import { runProgressiveSuite } from './progressive-runner.js';
+import { runWithConcurrency }  from './concurrency.js';
 
 const ROOT = path.resolve(import.meta.dirname ?? __dirname, '..');
 
 // ---------------------------------------------------------------------------
-// Known placeholder token suffixes — Fix 3
+// Placeholder guard — Fix 3
 // ---------------------------------------------------------------------------
 const PLACEHOLDER_PATTERNS = [
   /^1234567\./,
@@ -46,7 +56,6 @@ const PLACEHOLDER_PATTERNS = [
   /^1111111\./,
   /^1000000\./,
 ];
-
 function isPlaceholder(token: string): boolean {
   const suffix = token.split('::')[1] ?? '';
   return PLACEHOLDER_PATTERNS.some(p => p.test(suffix));
@@ -94,18 +103,25 @@ function parseArgs(argv: string[]): Record<string, string> {
 // Main
 // ---------------------------------------------------------------------------
 async function main() {
-  const args     = parseArgs(process.argv);
-  const suite    = args['suite']    ?? 'routing-flat';
-  const provider = (args['provider'] ?? 'mock') as Provider;
-  const model    = args['model']    ?? 'mock';
-  const delayMs  = parseInt(args['delay'] ?? '0', 10);
-  const limit    = args['limit'] ? parseInt(args['limit'], 10) : Infinity;
+  const args        = parseArgs(process.argv);
+  const suite       = args['suite']       ?? 'routing-flat';
+  const provider    = (args['provider']   ?? 'mock') as Provider;
+  const model       = args['model']       ?? 'mock';
+  const delayMs     = parseInt(args['delay']       ?? '0',  10);
+  const concurrency = parseInt(args['concurrency'] ?? '1',  10);
+  const limit       = args['limit'] ? parseInt(args['limit'], 10) : Infinity;
 
-  // Mode resolution — --show-token is backwards-compat alias for echo
+  // Mode resolution
   let mode: BenchMode = (args['mode'] as BenchMode) ?? 'echo';
-  if ('show-token' in args) mode = 'echo';
-  // seeded suite always forces seeded mode
   if (suite === 'routing-seeded') mode = 'seeded';
+
+  // Warn if concurrency > 1 without delay on rate-limited providers
+  if (concurrency > 1 && delayMs === 0 && (provider === 'groq' || provider === 'cerebras')) {
+    console.warn(
+      `⚠️  WARNING: --concurrency ${concurrency} with no --delay on ${provider} free tier.\n` +
+      `   This will likely trigger 429 rate limits. Recommended: --concurrency 1 --delay 2000\n`
+    );
+  }
 
   const apiKey =
     args['key'] ??
@@ -128,34 +144,31 @@ async function main() {
   const summaryPath = `${outBase}.summary.json`;
 
   console.log(`\n═══ skill-bench.md runner ═══`);
-  console.log(`Suite:    ${suite}`);
-  console.log(`Mode:     ${mode}`);
-  console.log(`Provider: ${provider}`);
-  console.log(`Model:    ${model}`);
-  if (limit < Infinity) console.log(`Limit:    first ${limit} skills`);
-  if (delayMs > 0)      console.log(`Delay:    ${delayMs}ms between requests`);
-  console.log(`Output:   ${csvPath}\n`);
+  console.log(`Suite:       ${suite}`);
+  console.log(`Mode:        ${mode}`);
+  console.log(`Provider:    ${provider}`);
+  console.log(`Model:       ${model}`);
+  console.log(`Concurrency: ${concurrency} (max in-flight)`);
+  console.log(`Delay:       ${delayMs}ms after each completion`);
+  if (limit < Infinity) console.log(`Limit:       first ${limit} skills`);
+  console.log(`Output:      ${csvPath}\n`);
 
-  let summary: Record<string, unknown> = { suite, mode, model, provider, timestamp, delayMs };
+  let summary: Record<string, unknown> = {
+    suite, mode, model, provider, timestamp,
+    concurrency, delayMs,
+  };
 
   // -------------------------------------------------------------------------
-  // routing-flat  (supports all 3 modes)
+  // routing-flat — supports all 3 modes
   // -------------------------------------------------------------------------
   if (suite === 'routing-flat') {
     const manifestPath = path.join(ROOT, 'manifest.json');
     const manifest     = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'))
       .slice(0, limit === Infinity ? undefined : limit);
 
-    type FlatResult = {
-      skill: string; expected: string; actual: string;
-      pass: boolean; hallucinated: boolean; latency_ms: number; mode: BenchMode;
-    };
-    const results: FlatResult[] = [];
-
     if (mode === 'seeded') {
-      // Delegate entirely to seeded-runner for seeded mode
       const seededResults = await runSeededSuite({
-        manifestFile: manifestPath, outputCSV: csvPath, router, delayMs,
+        manifestFile: manifestPath, outputCSV: csvPath, router, delayMs, concurrency,
       });
       const passed = seededResults.filter(r => r.pass).length;
       summary = { ...summary, total: seededResults.length, passed,
@@ -165,9 +178,13 @@ async function main() {
       return;
     }
 
-    for (const entry of manifest) {
-      if (delayMs > 0 && results.length > 0) await sleep(delayMs);
+    type FlatResult = {
+      skill: string; expected: string; actual: string;
+      pass: boolean; hallucinated: boolean; latency_ms: number; mode: BenchMode;
+    };
 
+    // Build tasks array for semaphore runner
+    const tasks = manifest.map((entry: { skill: string; token: string }) => async (): Promise<FlatResult> => {
       const prompt = mode === 'echo'
         ? buildEchoPrompt(entry.skill, entry.token)
         : buildRecallPrompt(entry.skill);
@@ -182,17 +199,29 @@ async function main() {
         actual = `ERROR: ${(err as Error).message}`;
       }
 
-      const pass        = actual.trim() === entry.token;
-      const hallucinated = !pass && isPlaceholder(actual.trim());  // Fix 3
+      const pass         = actual.trim() === entry.token;
+      const hallucinated = !pass && isPlaceholder(actual.trim());
 
       if (!pass) {
         const tag = hallucinated ? '[HALLUCINATED]' : '[FAIL]';
         console.log(`${tag} ${entry.skill}  expected=${entry.token}  got=${actual.trim()}`);
       }
 
-      results.push({ skill: entry.skill, expected: entry.token, actual: actual.trim(),
-        pass, hallucinated, latency_ms, mode });
-    }
+      return { skill: entry.skill, expected: entry.token, actual: actual.trim(),
+        pass, hallucinated, latency_ms, mode };
+    });
+
+    // Run through semaphore
+    const settled = await runWithConcurrency(tasks, concurrency, delayMs);
+    const results: FlatResult[] = settled.map((r, i) => {
+      if (r.status === 'fulfilled') return r.value;
+      const entry = manifest[i];
+      return {
+        skill: entry.skill, expected: entry.token,
+        actual: `ERROR: ${(r as PromiseRejectedResult).reason}`,
+        pass: false, hallucinated: false, latency_ms: 0, mode,
+      };
+    });
 
     const passed       = results.filter(r => r.pass).length;
     const hallucinated = results.filter(r => r.hallucinated).length;
@@ -211,12 +240,12 @@ async function main() {
       accuracy: (accuracy * 100).toFixed(1) + '%' };
 
   // -------------------------------------------------------------------------
-  // routing-seeded  (always seeded mode)
+  // routing-seeded
   // -------------------------------------------------------------------------
   } else if (suite === 'routing-seeded') {
     const manifestPath  = path.join(ROOT, 'manifest.json');
     const seededResults = await runSeededSuite({
-      manifestFile: manifestPath, outputCSV: csvPath, router, delayMs,
+      manifestFile: manifestPath, outputCSV: csvPath, router, delayMs, concurrency,
     });
     const passed = seededResults.filter(r => r.pass).length;
     summary = { ...summary, total: seededResults.length, passed,
@@ -227,12 +256,14 @@ async function main() {
   // -------------------------------------------------------------------------
   } else if (suite === 'loading-progressive' || suite === 'loading-mixed-depth') {
     const manifestPath = path.join(ROOT, 'suites/loading-progressive/progressive-manifest.json');
-    const results      = await runProgressiveSuite({ manifestFile: manifestPath, outputCSV: csvPath, router, delayMs });
-    const n            = results.length;
-    const routeAcc  = results.filter(r => r.route_correct).length / n;
-    const depthAcc  = results.filter(r => r.depth_correct).length / n;
-    const chainAcc  = results.filter(r => r.layer_chain_correct).length / n;
-    const avgEff    = results.reduce((s, r) => s + r.efficiency, 0) / n;
+    const results      = await runProgressiveSuite({
+      manifestFile: manifestPath, outputCSV: csvPath, router, delayMs, concurrency,
+    });
+    const n = results.length;
+    const routeAcc = results.filter(r => r.route_correct).length / n;
+    const depthAcc = results.filter(r => r.depth_correct).length / n;
+    const chainAcc = results.filter(r => r.layer_chain_correct).length / n;
+    const avgEff   = results.reduce((s, r) => s + r.efficiency, 0) / n;
     summary = { ...summary, total: n,
       routing_accuracy:     (routeAcc * 100).toFixed(1) + '%',
       depth_accuracy:       (depthAcc * 100).toFixed(1) + '%',
@@ -248,9 +279,9 @@ async function main() {
   printSummary(summary, csvPath);
 }
 
-function printSummary(summary: Record<string, unknown>, csvPath: string) {
+function printSummary(s: Record<string, unknown>, csvPath: string) {
   console.log(`\n═══ Summary ═══`);
-  console.log(JSON.stringify(summary, null, 2));
+  console.log(JSON.stringify(s, null, 2));
   console.log(`\nDone. Results: ${csvPath}`);
 }
 
