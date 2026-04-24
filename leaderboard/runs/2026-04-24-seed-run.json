@@ -1,0 +1,49 @@
+{
+  "run_label": "Seed Run — First public comparison",
+  "run_date": "2026-04-24",
+  "suite_routing_flat": {
+    "description": "200 skills, static tokens, single-hop routing",
+    "note": "Simulated run against v1 manifest",
+    "results": [
+      { "model": "gpt-4o",         "provider": "openai",    "routing_accuracy": "95.0%", "avg_latency_ms": 820,  "run_id": "4e706aec" },
+      { "model": "claude-3-7",     "provider": "anthropic", "routing_accuracy": "95.0%", "avg_latency_ms": 950,  "run_id": "81031d22" },
+      { "model": "gemini-2-flash", "provider": "gemini",    "routing_accuracy": "90.0%", "avg_latency_ms": 410,  "run_id": "5568357e" }
+    ]
+  },
+  "suite_loading_progressive": {
+    "description": "100 skills, variable depth 1–5 layers, progressive token chain",
+    "note": "Simulated run against progressive-manifest.json",
+    "results": [
+      {
+        "model": "gpt-4o",
+        "provider": "openai",
+        "routing_accuracy": "100.0%",
+        "depth_accuracy": "70.0%",
+        "layer_chain_accuracy": "60.0%",
+        "routing_efficiency": "0.84",
+        "avg_latency_ms": 1321,
+        "run_id": "4e706aec"
+      },
+      {
+        "model": "claude-3-7",
+        "provider": "anthropic",
+        "routing_accuracy": "100.0%",
+        "depth_accuracy": "80.0%",
+        "layer_chain_accuracy": "70.0%",
+        "routing_efficiency": "1.20",
+        "avg_latency_ms": 1442,
+        "run_id": "81031d22"
+      },
+      {
+        "model": "gemini-2-flash",
+        "provider": "gemini",
+        "routing_accuracy": "100.0%",
+        "depth_accuracy": "80.0%",
+        "layer_chain_accuracy": "50.0%",
+        "routing_efficiency": "0.98",
+        "avg_latency_ms": 909,
+        "run_id": "5568357e"
+      }
+    ]
+  }
+}
