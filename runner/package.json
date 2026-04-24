@@ -1,10 +1,10 @@
 {
   "name": "skill-bench-runner",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "LLM router benchmark runner for skill-bench.md",
   "type": "module",
   "scripts": {
-    "// ─── MOCK (offline) ───────────────────────────────────────────────────": "",
+    "// ─── MOCK (offline) ──────────────────────────────────────────────────────": "",
     "mock":                          "tsx run.ts --suite routing-flat --mode echo --provider mock --model mock",
     "mock:format":                   "tsx suites/routing-format/format-runner.ts --format all --provider mock --model mock",
     "mock:format:bare":              "tsx suites/routing-format/format-runner.ts --format bare --provider mock --model mock",
@@ -13,7 +13,11 @@
     "smoke":                         "tsx run.ts --suite routing-flat --mode echo --provider mock --model mock --limit 10",
     "smoke:format":                  "tsx suites/routing-format/format-runner.ts --format all --provider mock --model mock --limit 10",
 
-    "// ─── OpenAI ──────────────────────────────────────────────────────────": "",
+    "// ─── Phase 5: Fix Generator ─────────────────────────────────────────────": "",
+    "fix:generate":                  "tsx repair/generate-fix.ts",
+    "fix:generate:run":              "tsx repair/generate-fix.ts --run-id",
+
+    "// ─── OpenAI ──────────────────────────────────────────────────────────────": "",
     "bench:openai:echo":             "tsx run.ts --suite routing-flat --mode echo --provider openai --model gpt-4o --key $OPENAI_API_KEY --concurrency 5",
     "bench:openai:format":           "tsx suites/routing-format/format-runner.ts --format all --provider openai --model gpt-4o --key $OPENAI_API_KEY --concurrency 5",
     "bench:openai:format:bare":      "tsx suites/routing-format/format-runner.ts --format bare --provider openai --model gpt-4o --key $OPENAI_API_KEY --concurrency 5",
@@ -21,39 +25,43 @@
     "bench:openai:format:described": "tsx suites/routing-format/format-runner.ts --format described --provider openai --model gpt-4o --key $OPENAI_API_KEY --concurrency 5",
     "bench:openai:seeded":           "tsx run.ts --suite routing-seeded --provider openai --model gpt-4o --key $OPENAI_API_KEY --concurrency 5",
     "bench:openai:progressive":      "tsx run.ts --suite loading-progressive --provider openai --model gpt-4o --key $OPENAI_API_KEY --concurrency 5",
+    "fix:openai":                    "npm run bench:openai:format && tsx repair/generate-fix.ts --results ./results",
 
-    "// ─── Anthropic ───────────────────────────────────────────────────────": "",
+    "// ─── Anthropic ───────────────────────────────────────────────────────────": "",
     "bench:anthropic:format":        "tsx suites/routing-format/format-runner.ts --format all --provider anthropic --model claude-3-7-sonnet-20250219 --key $ANTHROPIC_API_KEY --concurrency 5",
     "bench:anthropic:echo":          "tsx run.ts --suite routing-flat --mode echo --provider anthropic --model claude-3-7-sonnet-20250219 --key $ANTHROPIC_API_KEY --concurrency 5",
     "bench:anthropic:seeded":        "tsx run.ts --suite routing-seeded --provider anthropic --model claude-3-7-sonnet-20250219 --key $ANTHROPIC_API_KEY --concurrency 5",
     "bench:anthropic:progressive":   "tsx run.ts --suite loading-progressive --provider anthropic --model claude-3-7-sonnet-20250219 --key $ANTHROPIC_API_KEY --concurrency 5",
 
-    "// ─── Gemini ──────────────────────────────────────────────────────────": "",
+    "// ─── Gemini ──────────────────────────────────────────────────────────────": "",
     "bench:gemini:format":           "tsx suites/routing-format/format-runner.ts --format all --provider gemini --model gemini-2.0-flash --key $GEMINI_API_KEY --concurrency 5",
     "bench:gemini:echo":             "tsx run.ts --suite routing-flat --mode echo --provider gemini --model gemini-2.0-flash --key $GEMINI_API_KEY --concurrency 5",
     "bench:gemini:seeded":           "tsx run.ts --suite routing-seeded --provider gemini --model gemini-2.0-flash --key $GEMINI_API_KEY --concurrency 5",
 
-    "// ─── DeepSeek (concurrency 3) ────────────────────────────────────────": "",
+    "// ─── DeepSeek (concurrency 3) ────────────────────────────────────────────": "",
     "bench:deepseek:format":         "tsx suites/routing-format/format-runner.ts --format all --provider deepseek --model deepseek-reasoner --key $DEEPSEEK_API_KEY --concurrency 3",
     "bench:deepseek:echo":           "tsx run.ts --suite routing-flat --mode echo --provider deepseek --model deepseek-reasoner --key $DEEPSEEK_API_KEY --concurrency 3",
     "bench:deepseek:seeded":         "tsx run.ts --suite routing-seeded --provider deepseek --model deepseek-reasoner --key $DEEPSEEK_API_KEY --concurrency 3",
 
-    "// ─── xAI Grok ────────────────────────────────────────────────────────": "",
+    "// ─── xAI Grok ────────────────────────────────────────────────────────────": "",
     "bench:xai:format":              "tsx suites/routing-format/format-runner.ts --format all --provider openai --model grok-3 --key $XAI_API_KEY --concurrency 5",
     "bench:xai:echo":                "tsx run.ts --suite routing-flat --mode echo --provider openai --model grok-3 --key $XAI_API_KEY --concurrency 5",
 
-    "// ─── Groq FREE TIER (concurrency 1, delay 2000 — do not increase) ───": "",
+    "// ─── Groq FREE TIER (concurrency 1, delay 2000 — do not increase) ────────": "",
     "bench:groq:format":             "tsx suites/routing-format/format-runner.ts --format all --provider groq --model llama-3.1-8b-instant --key $GROQ_API_KEY --concurrency 1 --delay 2000",
     "bench:groq:format:bare":        "tsx suites/routing-format/format-runner.ts --format bare --provider groq --model llama-3.1-8b-instant --key $GROQ_API_KEY --concurrency 1 --delay 2000",
     "bench:groq:echo":               "tsx run.ts --suite routing-flat --mode echo --provider groq --model llama-3.1-8b-instant --key $GROQ_API_KEY --concurrency 1 --delay 2000",
     "bench:groq:70b:format":         "tsx suites/routing-format/format-runner.ts --format all --provider groq --model llama-3.3-70b-versatile --key $GROQ_API_KEY --concurrency 1 --delay 2000",
     "bench:groq:70b:echo":           "tsx run.ts --suite routing-flat --mode echo --provider groq --model llama-3.3-70b-versatile --key $GROQ_API_KEY --concurrency 1 --delay 2000",
     "bench:groq:progressive":        "tsx run.ts --suite loading-progressive --provider groq --model llama-3.1-8b-instant --key $GROQ_API_KEY --concurrency 1 --delay 2000",
+    "fix:groq":                      "npm run bench:groq:format && tsx repair/generate-fix.ts --results ./results",
+    "fix:groq:70b":                  "npm run bench:groq:70b:format && tsx repair/generate-fix.ts --results ./results",
 
-    "// ─── Cerebras FREE TIER (concurrency 1, delay 2000) ─────────────────": "",
+    "// ─── Cerebras FREE TIER (concurrency 1, delay 2000) ─────────────────────": "",
     "bench:cerebras:format":         "tsx suites/routing-format/format-runner.ts --format all --provider cerebras --model llama3.1-8b --key $CEREBRAS_API_KEY --concurrency 1 --delay 2000",
     "bench:cerebras:70b:format":     "tsx suites/routing-format/format-runner.ts --format all --provider cerebras --model llama3.3-70b --key $CEREBRAS_API_KEY --concurrency 1 --delay 2000",
-    "bench:cerebras:echo":           "tsx run.ts --suite routing-flat --mode echo --provider cerebras --model llama3.1-8b --key $CEREBRAS_API_KEY --concurrency 1 --delay 2000"
+    "bench:cerebras:echo":           "tsx run.ts --suite routing-flat --mode echo --provider cerebras --model llama3.1-8b --key $CEREBRAS_API_KEY --concurrency 1 --delay 2000",
+    "fix:cerebras":                  "npm run bench:cerebras:format && tsx repair/generate-fix.ts --results ./results"
   },
   "dependencies": {},
   "devDependencies": {
