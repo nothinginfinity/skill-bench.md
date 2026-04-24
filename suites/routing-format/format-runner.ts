@@ -18,7 +18,8 @@
  *   results/routing-format-{model}-{timestamp}.bare.csv
  *   results/routing-format-{model}-{timestamp}.delimited.csv
  *   results/routing-format-{model}-{timestamp}.described.csv
- *   results/routing-format-{model}-{timestamp}.matrix.csv   ← compatibility matrix
+ *   results/routing-format-{model}-{timestamp}.matrix.csv        ← compatibility matrix
+ *   results/routing-format-{model}-{timestamp}.recommendation.json ← repair artifact
  *   results/routing-format-{model}-{timestamp}.summary.json
  */
 
@@ -29,7 +30,8 @@ import { runWithConcurrency }                   from '../concurrency.js';
 
 const ROOT = path.resolve(import.meta.dirname ?? __dirname, '../..');
 
-export type FormatName = 'bare' | 'delimited' | 'described';
+export type FormatName   = 'bare' | 'delimited' | 'described';
+export type Confidence   = 'high' | 'medium' | 'low';
 export const ALL_FORMATS: FormatName[] = ['bare', 'delimited', 'described'];
 
 // ---------------------------------------------------------------------------
@@ -109,13 +111,120 @@ export function buildDescribedPrompt(
 // Per-format result type
 // ---------------------------------------------------------------------------
 export interface FormatResult {
-  skill:       string;
-  expected:    string;
-  actual:      string;
-  pass:        boolean;
+  skill:        string;
+  expected:     string;
+  actual:       string;
+  pass:         boolean;
   hallucinated: boolean;
-  latency_ms:  number;
-  format:      FormatName;
+  latency_ms:   number;
+  format:       FormatName;
+}
+
+// ---------------------------------------------------------------------------
+// Recommendation artifact — the bridge from benchmark → diagnosis → fix
+// ---------------------------------------------------------------------------
+export interface Recommendation {
+  suite:                'routing-format';
+  model:                string;
+  provider:             string;
+  run_id:               string;
+  best_format:          FormatName;
+  worst_format:         FormatName;
+  format_spread_pp:     number;
+  confidence:           Confidence;
+  recommendation:       string;
+  reason:               string;
+  gains: {
+    delimited_vs_bare:    number;   // pp improvement delimited over bare
+    described_vs_bare:    number;   // pp improvement described over bare
+    described_vs_delimited: number; // pp improvement described over delimited
+  };
+  skill_authoring_rule: string;
+  next_suite:           string;
+  paywall_artifact:     string;    // path token — skill-fix-{run_id}.md
+}
+
+/**
+ * buildRecommendation
+ *
+ * Derives a structured recommendation from the compatibility matrix.
+ * Confidence tiers:
+ *   high   — format_spread > 20pp  → model is highly format-sensitive; specific
+ *                                     authoring guidance is required
+ *   medium — spread 10–20pp        → format matters but model has partial
+ *                                     tolerance
+ *   low    — spread < 10pp         → model is format-stable; any format works;
+ *                                     optimise for token efficiency (bare)
+ */
+export function buildRecommendation(
+  model: string,
+  provider: string,
+  runId: string,
+  matrix: MatrixRow
+): Recommendation {
+  const { bare_accuracy: bare, delimited_accuracy: delim, described_accuracy: desc } = matrix;
+
+  const gains = {
+    delimited_vs_bare:      parseFloat((delim - bare).toFixed(1)),
+    described_vs_bare:      parseFloat((desc  - bare).toFixed(1)),
+    described_vs_delimited: parseFloat((desc  - delim).toFixed(1)),
+  };
+
+  const spread = matrix.format_spread;
+  const best   = matrix.best_format;
+  const worst  = (['bare', 'delimited', 'described'] as FormatName[])
+    .map(f => ({ f, acc: matrix[`${f}_accuracy`] as number }))
+    .reduce((a, b) => a.acc <= b.acc ? a : b).f;
+
+  // Confidence
+  const confidence: Confidence =
+    spread > 20 ? 'high' :
+    spread > 10 ? 'medium' : 'low';
+
+  // Human-readable recommendation sentence
+  const recommendation =
+    confidence === 'low'
+      ? `Model is format-stable (spread ${spread}pp). Use bare format for token efficiency.`
+      : confidence === 'medium'
+      ? `Model shows moderate format sensitivity (spread ${spread}pp). Prefer ${best} format; avoid ${worst} format for critical skills.`
+      : `Model is highly format-sensitive (spread ${spread}pp). All skill files must use ${best} format. Do not ship ${worst}-format skills to this model.`;
+
+  // Evidence reason sentence
+  const topGainLabel  = best === 'described' ? 'described'
+                      : best === 'delimited'  ? 'delimited'
+                      : 'bare';
+  const topGainValue  = gains[`${topGainLabel === 'bare' ? 'delimited' : topGainLabel}_vs_bare` as keyof typeof gains] ?? 0;
+  const reason =
+    `${topGainLabel.charAt(0).toUpperCase() + topGainLabel.slice(1)} format outperformed bare ` +
+    `by ${topGainValue > 0 ? '+' : ''}${topGainValue}pp across the same ${200} skill IDs ` +
+    `(bare ${bare}% → ${topGainLabel} ${best === 'described' ? desc : delim}%).`;
+
+  // Skill authoring rule — the direct output that informs skill file authors
+  const skill_authoring_rule =
+    confidence === 'low'
+      ? 'Skills may use any format. Bare is recommended for token efficiency.'
+      : best === 'described'
+      ? 'Every skill file must include: description, input_type, output_type, and constraints fields.'
+      : best === 'delimited'
+      ? 'Wrap every skill invocation in --- BEGIN SKILL / --- END SKILL --- boundary markers.'
+      : 'Bare format is optimal. Descriptions add noise for this model; keep skills minimal.';
+
+  return {
+    suite:                'routing-format',
+    model,
+    provider,
+    run_id:               runId,
+    best_format:          best,
+    worst_format:         worst,
+    format_spread_pp:     spread,
+    confidence,
+    recommendation,
+    reason,
+    gains,
+    skill_authoring_rule,
+    next_suite:           'loading-progressive',
+    paywall_artifact:     `skill-fix-${runId}.md`,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -186,6 +295,16 @@ export async function runFormatPass(
 // ---------------------------------------------------------------------------
 // Matrix builder — model × format accuracy table
 // ---------------------------------------------------------------------------
+export interface MatrixRow {
+  model: string;
+  bare_accuracy: number;       bare_passed: number;       bare_errors: number;       bare_hallucinated: number;       bare_avg_ms: number;
+  delimited_accuracy: number;  delimited_passed: number;  delimited_errors: number;  delimited_hallucinated: number;  delimited_avg_ms: number;
+  described_accuracy: number;  described_passed: number;  described_errors: number;  described_hallucinated: number;  described_avg_ms: number;
+  best_format: FormatName;
+  format_spread: number;
+  [key: string]: unknown;
+}
+
 export function buildMatrix(
   model: string,
   resultsByFormat: Record<FormatName, FormatResult[]>
@@ -198,30 +317,19 @@ export function buildMatrix(
     const errors  = results.filter(r => r.actual.startsWith('ERROR:')).length;
     const hallucinated = results.filter(r => r.hallucinated).length;
     const avg_ms  = results.reduce((s, r) => s + r.latency_ms, 0) / total;
-    row[`${fmt}_accuracy`]    = parseFloat((passed / total * 100).toFixed(1));
-    row[`${fmt}_passed`]      = passed;
-    row[`${fmt}_errors`]      = errors;
+    row[`${fmt}_accuracy`]     = parseFloat((passed / total * 100).toFixed(1));
+    row[`${fmt}_passed`]       = passed;
+    row[`${fmt}_errors`]       = errors;
     row[`${fmt}_hallucinated`] = hallucinated;
-    row[`${fmt}_avg_ms`]      = parseFloat(avg_ms.toFixed(0));
+    row[`${fmt}_avg_ms`]       = parseFloat(avg_ms.toFixed(0));
   }
-  // Best format for this model
   const accuracies = ALL_FORMATS.map(f => ({ f, acc: row[`${f}_accuracy`] as number }));
-  row.best_format = accuracies.reduce((a, b) => a.acc >= b.acc ? a : b).f as FormatName;
+  row.best_format   = accuracies.reduce((a, b) => a.acc >= b.acc ? a : b).f as FormatName;
   row.format_spread = parseFloat((
     Math.max(...accuracies.map(a => a.acc)) -
     Math.min(...accuracies.map(a => a.acc))
   ).toFixed(1));
   return row;
-}
-
-interface MatrixRow {
-  model: string;
-  bare_accuracy: number;       bare_passed: number;       bare_errors: number;       bare_hallucinated: number;       bare_avg_ms: number;
-  delimited_accuracy: number;  delimited_passed: number;  delimited_errors: number;  delimited_hallucinated: number;  delimited_avg_ms: number;
-  described_accuracy: number;  described_passed: number;  described_errors: number;  described_hallucinated: number;  described_avg_ms: number;
-  best_format: FormatName;
-  format_spread: number;
-  [key: string]: unknown;
 }
 
 interface ManifestEntry {
@@ -337,26 +445,46 @@ async function main() {
     resultsByFormat[fmt] = results;
   }
 
-  // Build matrix if all 3 formats ran
+  // Build matrix + recommendation if all 3 formats ran
   if (formats.length === 3) {
     const matrix = buildMatrix(model, resultsByFormat as Record<FormatName, FormatResult[]>);
+
+    // ── Matrix CSV
     const matrixPath = `${outBase}.matrix.csv`;
     fs.writeFileSync(matrixPath, matrixToCSV([matrix]));
+
+    // ── Recommendation JSON  ← the new artifact
+    const rec     = buildRecommendation(model, provider, timestamp, matrix);
+    const recPath = `${outBase}.recommendation.json`;
+    fs.writeFileSync(recPath, JSON.stringify(rec, null, 2));
+
     console.log(`\n── Compatibility Matrix ──`);
     console.log(`  Bare:       ${matrix.bare_accuracy}%`);
     console.log(`  Delimited:  ${matrix.delimited_accuracy}%`);
     console.log(`  Described:  ${matrix.described_accuracy}%`);
     console.log(`  Best format: ${matrix.best_format}  (spread: ${matrix.format_spread}pp)`);
-    console.log(`  Matrix saved: ${matrixPath}`);
+    console.log(`  Matrix saved:         ${matrixPath}`);
 
+    console.log(`\n── Recommendation ──`);
+    console.log(`  Confidence:  ${rec.confidence.toUpperCase()}`);
+    console.log(`  ${rec.recommendation}`);
+    console.log(`  ${rec.reason}`);
+    console.log(`  Authoring rule: ${rec.skill_authoring_rule}`);
+    console.log(`  Next suite:     ${rec.next_suite}`);
+    console.log(`  Fix artifact:   ${rec.paywall_artifact}`);
+    console.log(`  Saved: ${recPath}`);
+
+    // ── Summary JSON (unchanged)
     const summary = {
-      suite: 'routing-format', model, provider, timestamp,
+      suite: 'routing-format', model, provider, run_id: timestamp,
       concurrency, delayMs, skills: manifest.length,
       bare_accuracy:      `${matrix.bare_accuracy}%`,
       delimited_accuracy: `${matrix.delimited_accuracy}%`,
       described_accuracy: `${matrix.described_accuracy}%`,
       best_format:        matrix.best_format,
       format_spread:      `${matrix.format_spread}pp`,
+      recommendation_confidence: rec.confidence,
+      paywall_artifact:   rec.paywall_artifact,
     };
     fs.writeFileSync(`${outBase}.summary.json`, JSON.stringify(summary, null, 2));
     console.log(`  Summary: ${outBase}.summary.json`);
