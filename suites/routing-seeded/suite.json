@@ -1,0 +1,11 @@
+{
+  "suite": "routing-seeded",
+  "version": "1.0",
+  "description": "Dynamic seeded tokens. Each run generates BENCH-{id}::HMAC(run_seed, skill_id). Zero memorization advantage.",
+  "token_mode": "seeded",
+  "seed_source": "run-time UUID injected by runner",
+  "token_formula": "BENCH-{id}::HMAC-SHA256(seed + ':' + skill_id)[0:8]",
+  "scoring": ["route_correct", "token_exact_match"],
+  "runner": "/runner/seeded-runner.ts",
+  "note": "Runner generates seed at start of run and injects it into every skill prompt. Expected token is computed per-run."
+}

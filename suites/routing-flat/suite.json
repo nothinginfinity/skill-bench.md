@@ -1,0 +1,16 @@
+{
+  "suite": "routing-flat",
+  "version": "1.0",
+  "description": "Clear single-hop routing. One correct skill per prompt. Tests routing breadth at 200 skills.",
+  "token_mode": "static",
+  "scoring": ["route_correct"],
+  "manifest": "/manifest.json",
+  "cases": [
+    {"id": 1, "skill": "bench-001", "prompt": "Execute skill bench-001 and return its token.", "expected": "BENCH-001"},
+    {"id": 2, "skill": "bench-002", "prompt": "Execute skill bench-002 and return its token.", "expected": "BENCH-002"},
+    {"id": 3, "skill": "bench-003", "prompt": "Execute skill bench-003 and return its token.", "expected": "BENCH-003"},
+    {"id": 4, "skill": "bench-004", "prompt": "Execute skill bench-004 and return its token.", "expected": "BENCH-004"},
+    {"id": 5, "skill": "bench-005", "prompt": "Execute skill bench-005 and return its token.", "expected": "BENCH-005"}
+  ],
+  "note": "Full 200-case set references /manifest.json. Cases here are illustrative examples."
+}

@@ -1,0 +1,23 @@
+{
+  "suite": "loading-progressive",
+  "version": "1.0",
+  "description": "Progressive depth loading. Each skill has 1-5 layers. Prompt encodes required depth. Model must emit correct layer token chain.",
+  "token_mode": "progressive",
+  "layer_descriptions": {
+    "1": "identity",
+    "2": "parameter",
+    "3": "constraint",
+    "4": "reasoning",
+    "5": "adversarial"
+  },
+  "depth_distribution": {"1": 25, "2": 25, "3": 25, "5": 25},
+  "token_format": "BENCH-{id}::DEPTH={n}::{l1_token}.{l2_token}...{ln_token}",
+  "scoring": ["route_correct", "depth_correct", "layer_chain_correct", "overload_error", "underload_error"],
+  "metrics": {
+    "Skill Depth Accuracy": "correct_depth / total_tests",
+    "Layer Chain Accuracy": "correct_layer_tokens / expected_layer_tokens",
+    "Routing Efficiency": "required_layers / loaded_layers"
+  },
+  "manifest": "suites/loading-progressive/progressive-manifest.json",
+  "runner": "/runner/progressive-runner.ts"
+}

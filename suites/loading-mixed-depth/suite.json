@@ -1,0 +1,11 @@
+{
+  "suite": "loading-mixed-depth",
+  "version": "1.0",
+  "description": "Same as loading-progressive but order is fully randomized per run. Tests breadth x depth x randomization.",
+  "token_mode": "progressive",
+  "randomize_order": true,
+  "randomize_depths": false,
+  "scoring": ["route_correct", "depth_correct", "layer_chain_correct", "overload_error", "underload_error"],
+  "manifest": "suites/loading-progressive/progressive-manifest.json",
+  "note": "References the same progressive-manifest.json but case order shuffled by runner seed."
+}

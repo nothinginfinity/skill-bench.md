@@ -1,0 +1,20 @@
+{
+  "suite": "adversarial-overlap",
+  "version": "1.0",
+  "description": "Overlapping skill descriptions and ambiguous prompts. Tests routing under real-world ambiguity.",
+  "token_mode": "static",
+  "scoring": ["route_correct", "ambiguity_resolved_correctly"],
+  "adversarial_types": [
+    "overlapping_skills",
+    "misleading_phrasing",
+    "similar_capability_names",
+    "negation_traps",
+    "context_switches"
+  ],
+  "example_cases": [
+    {"prompt": "calculate the total of these numbers", "ambiguous_between": ["math-sum", "finance-aggregate"], "expected_skill": "math-sum"},
+    {"prompt": "summarize this number sequence", "ambiguous_between": ["parser-numeric", "text-summarizer"], "expected_skill": "parser-numeric"},
+    {"prompt": "don't use the image tool, convert this text", "trap": "negation", "expected_skill": "text-converter"}
+  ],
+  "note": "Full adversarial case set to be added in v4. Example cases above are illustrative."
+}

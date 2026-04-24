@@ -1,0 +1,14 @@
+{
+  "suite": "combined-edge-cases",
+  "version": "1.0",
+  "description": "Combined routing + depth + adversarial. The hardest suite. Use for comparing specialized vs general models.",
+  "token_mode": "seeded+progressive",
+  "scoring": ["route_correct", "depth_correct", "layer_chain_correct", "adversarial_survival", "efficiency"],
+  "complexity_formula": "breadth x depth x ambiguity",
+  "derives_from": [
+    "suites/routing-seeded",
+    "suites/loading-progressive",
+    "suites/adversarial-overlap"
+  ],
+  "note": "Derives cases from all other suites. Run only after validating component suites."
+}

@@ -1,0 +1,28 @@
+{
+  "leaderboard": "skill-bench.md public leaderboard",
+  "version": "1.0",
+  "submission_fields": {
+    "model_name": "string",
+    "provider": "string",
+    "date": "ISO8601",
+    "suite": "routing-flat | routing-seeded | loading-progressive | loading-mixed-depth | adversarial-overlap | combined-edge-cases",
+    "run_id": "UUID"
+  },
+  "metrics": {
+    "Routing Accuracy": "correct_routes / total_cases",
+    "Depth Accuracy": "correct_depth / total_cases (progressive suites only)",
+    "Layer Chain Accuracy": "correct_layer_tokens / expected_layer_tokens",
+    "Routing Efficiency": "required_layers / loaded_layers",
+    "Adversarial Survival": "correct_routes_under_adversarial / adversarial_cases",
+    "Pass Rate": "total_pass / total_cases"
+  },
+  "profile_example": {
+    "model": "Model A",
+    "routing_accuracy": "98%",
+    "depth_accuracy": "71%",
+    "layer_chain_accuracy": "68%",
+    "routing_efficiency": "0.62",
+    "adversarial_survival": "N/A"
+  },
+  "leaderboard_columns": ["model", "routing_accuracy", "depth_accuracy", "layer_chain_accuracy", "routing_efficiency", "adversarial_survival", "suite", "date"]
+}
