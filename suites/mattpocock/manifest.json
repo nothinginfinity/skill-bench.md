@@ -1,0 +1,212 @@
+[
+  {
+    "id": "caveman",
+    "token": "MP-001::d0a86676.4b2190ae",
+    "category": "custom",
+    "description": "Ultra-compressed communication mode. Cuts token usage ~75% by dropping filler, articles, and pleasantries while keeping full technical accuracy. Use when user says \"caveman mode\", \"talk like caveman\", \"use caveman\", \"less tokens\", \"be brief\", or invokes /caveman.",
+    "input_type": "text",
+    "output_type": "text",
+    "constraints": ["exact match required", "no explanation", "no punctuation"],
+    "source_file": "https://github.com/mattpocock/skills/blob/main/caveman/SKILL.md"
+  },
+  {
+    "id": "design-an-interface",
+    "token": "MP-002::d6c9fcdd.8d13e197",
+    "category": "custom",
+    "description": "Given a description of a product feature or user need, design a clean interface specification including components, props, and interaction patterns. Focuses on TypeScript-first, accessible, composable UI design.",
+    "input_type": "text",
+    "output_type": "text",
+    "constraints": ["exact match required", "no explanation", "no punctuation"],
+    "source_file": "https://github.com/mattpocock/skills/blob/main/design-an-interface/SKILL.md"
+  },
+  {
+    "id": "domain-model",
+    "token": "MP-003::645fbbe7.233717c0",
+    "category": "custom",
+    "description": "Given a description of a business domain or feature area, produce a clean domain model with entities, value objects, relationships, and invariants. Output TypeScript types and interfaces that reflect the domain language precisely.",
+    "input_type": "text",
+    "output_type": "text",
+    "constraints": ["exact match required", "no explanation", "no punctuation"],
+    "source_file": "https://github.com/mattpocock/skills/blob/main/domain-model/SKILL.md"
+  },
+  {
+    "id": "edit-article",
+    "token": "MP-004::1c6940d0.e01ff931",
+    "category": "custom",
+    "description": "Edit and improve a draft article or blog post. Improve clarity, flow, and precision. Cut filler, sharpen arguments, fix structure. Preserve the author's voice. Output the revised article only.",
+    "input_type": "text",
+    "output_type": "text",
+    "constraints": ["exact match required", "no explanation", "no punctuation"],
+    "source_file": "https://github.com/mattpocock/skills/blob/main/edit-article/SKILL.md"
+  },
+  {
+    "id": "git-guardrails-claude-code",
+    "token": "MP-005::de2a4745.d3fe869c",
+    "category": "custom",
+    "description": "Safety guardrails for Claude Code git operations. Prevents accidental force pushes, commits to protected branches, or destructive operations without explicit confirmation. Enforces safe-by-default git hygiene in agentic coding sessions.",
+    "input_type": "text",
+    "output_type": "text",
+    "constraints": ["exact match required", "no explanation", "no punctuation"],
+    "source_file": "https://github.com/mattpocock/skills/blob/main/git-guardrails-claude-code/SKILL.md"
+  },
+  {
+    "id": "github-triage",
+    "token": "MP-006::69289621.61bc3c30",
+    "category": "custom",
+    "description": "Triage a GitHub issue or pull request. Classify severity, identify affected area, suggest labels, check for duplicates, and recommend next action. Output structured triage notes ready to paste as a GitHub comment.",
+    "input_type": "text",
+    "output_type": "text",
+    "constraints": ["exact match required", "no explanation", "no punctuation"],
+    "source_file": "https://github.com/mattpocock/skills/blob/main/github-triage/SKILL.md"
+  },
+  {
+    "id": "grill-me",
+    "token": "MP-007::89855efc.4d403199",
+    "category": "custom",
+    "description": "Enter Socratic grilling mode. Ask probing questions to stress-test the user's reasoning, assumptions, or design decisions. Do not give answers — only ask questions. One question at a time. Push until the reasoning is airtight or the flaw is exposed.",
+    "input_type": "text",
+    "output_type": "text",
+    "constraints": ["exact match required", "no explanation", "no punctuation"],
+    "source_file": "https://github.com/mattpocock/skills/blob/main/grill-me/SKILL.md"
+  },
+  {
+    "id": "improve-codebase-architecture",
+    "token": "MP-008::dad59f52.d9a16507",
+    "category": "custom",
+    "description": "Analyse a codebase or architecture description and produce a prioritised improvement plan. Identify coupling, missing abstractions, scalability risks, and inconsistencies. Output actionable recommendations with rationale.",
+    "input_type": "text",
+    "output_type": "text",
+    "constraints": ["exact match required", "no explanation", "no punctuation"],
+    "source_file": "https://github.com/mattpocock/skills/blob/main/improve-codebase-architecture/SKILL.md"
+  },
+  {
+    "id": "migrate-to-shoehorn",
+    "token": "MP-009::a29e8ef5.6ec2fb48",
+    "category": "custom",
+    "description": "Guide a migration from an existing setup to Shoehorn. Analyse the current configuration, identify incompatibilities, and produce a step-by-step migration plan with code changes, risks, and rollback notes.",
+    "input_type": "text",
+    "output_type": "text",
+    "constraints": ["exact match required", "no explanation", "no punctuation"],
+    "source_file": "https://github.com/mattpocock/skills/blob/main/migrate-to-shoehorn/SKILL.md"
+  },
+  {
+    "id": "obsidian-vault",
+    "token": "MP-010::c8bdc1e7.ad7bf666",
+    "category": "custom",
+    "description": "Operate as an Obsidian vault assistant. Help organise notes, suggest links between concepts, create MOCs (maps of content), and maintain consistent tagging and naming conventions across a personal knowledge base.",
+    "input_type": "text",
+    "output_type": "text",
+    "constraints": ["exact match required", "no explanation", "no punctuation"],
+    "source_file": "https://github.com/mattpocock/skills/blob/main/obsidian-vault/SKILL.md"
+  },
+  {
+    "id": "qa",
+    "token": "MP-011::00597035.3e3efa0d",
+    "category": "custom",
+    "description": "Generate a thorough QA plan for a given feature, component, or system. Cover happy path, edge cases, error states, accessibility, and performance. Output structured test cases ready for a QA engineer or automated test suite.",
+    "input_type": "text",
+    "output_type": "text",
+    "constraints": ["exact match required", "no explanation", "no punctuation"],
+    "source_file": "https://github.com/mattpocock/skills/blob/main/qa/SKILL.md"
+  },
+  {
+    "id": "request-refactor-plan",
+    "token": "MP-012::fb989efd.5e93a15b",
+    "category": "custom",
+    "description": "Given existing code and a goal, produce a detailed refactor plan before writing any code. Identify what changes, why, in what order, and what risks exist. Output a numbered plan for human review and approval before execution.",
+    "input_type": "text",
+    "output_type": "text",
+    "constraints": ["exact match required", "no explanation", "no punctuation"],
+    "source_file": "https://github.com/mattpocock/skills/blob/main/request-refactor-plan/SKILL.md"
+  },
+  {
+    "id": "scaffold-exercises",
+    "token": "MP-013::4cc8073b.354835b7",
+    "category": "custom",
+    "description": "Given a concept or skill to teach, scaffold a set of progressive coding exercises from beginner to advanced. Each exercise should have a clear goal, starter code, hints, and a solution. Output ready-to-use exercise files.",
+    "input_type": "text",
+    "output_type": "text",
+    "constraints": ["exact match required", "no explanation", "no punctuation"],
+    "source_file": "https://github.com/mattpocock/skills/blob/main/scaffold-exercises/SKILL.md"
+  },
+  {
+    "id": "setup-pre-commit",
+    "token": "MP-014::8fdcd834.1692eb55",
+    "category": "custom",
+    "description": "Set up a pre-commit hook configuration for a project. Select appropriate hooks for the stack (linting, formatting, type-checking, secret scanning). Output a working .pre-commit-config.yaml and setup instructions.",
+    "input_type": "text",
+    "output_type": "text",
+    "constraints": ["exact match required", "no explanation", "no punctuation"],
+    "source_file": "https://github.com/mattpocock/skills/blob/main/setup-pre-commit/SKILL.md"
+  },
+  {
+    "id": "tdd",
+    "token": "MP-015::0b876251.4fb89416",
+    "category": "custom",
+    "description": "Drive development using strict TDD. Write a failing test first, then the minimal implementation to pass it, then refactor. Never write implementation code without a failing test. Output test and implementation in alternating red-green-refactor cycles.",
+    "input_type": "text",
+    "output_type": "text",
+    "constraints": ["exact match required", "no explanation", "no punctuation"],
+    "source_file": "https://github.com/mattpocock/skills/blob/main/tdd/SKILL.md"
+  },
+  {
+    "id": "to-issues",
+    "token": "MP-016::6c7d6819.21f1aade",
+    "category": "custom",
+    "description": "Convert a requirements document, PRD, or feature description into a set of well-scoped GitHub issues. Each issue should have a clear title, description, acceptance criteria, and suggested labels. Output ready-to-file issue markdown.",
+    "input_type": "text",
+    "output_type": "text",
+    "constraints": ["exact match required", "no explanation", "no punctuation"],
+    "source_file": "https://github.com/mattpocock/skills/blob/main/to-issues/SKILL.md"
+  },
+  {
+    "id": "to-prd",
+    "token": "MP-017::68aed4f5.f5d0f69c",
+    "category": "custom",
+    "description": "Convert a rough feature idea, user story, or brief into a structured Product Requirements Document. Include background, problem statement, goals, non-goals, requirements, open questions, and success metrics.",
+    "input_type": "text",
+    "output_type": "text",
+    "constraints": ["exact match required", "no explanation", "no punctuation"],
+    "source_file": "https://github.com/mattpocock/skills/blob/main/to-prd/SKILL.md"
+  },
+  {
+    "id": "triage-issue",
+    "token": "MP-018::2e5d5f4c.c2f3e1a7",
+    "category": "custom",
+    "description": "Triage a single bug report or feature request. Assess severity, reproduction steps, affected scope, and priority. Suggest the appropriate label set and next action. Output a triage summary ready to post as a GitHub comment.",
+    "input_type": "text",
+    "output_type": "text",
+    "constraints": ["exact match required", "no explanation", "no punctuation"],
+    "source_file": "https://github.com/mattpocock/skills/blob/main/triage-issue/SKILL.md"
+  },
+  {
+    "id": "ubiquitous-language",
+    "token": "MP-019::b3c4d5e6.f7a8b9c0",
+    "category": "custom",
+    "description": "Given a domain description or codebase, extract and define the ubiquitous language for that domain. Produce a glossary of terms with precise definitions, usage examples, and notes on terms to avoid. Align language between business and engineering.",
+    "input_type": "text",
+    "output_type": "text",
+    "constraints": ["exact match required", "no explanation", "no punctuation"],
+    "source_file": "https://github.com/mattpocock/skills/blob/main/ubiquitous-language/SKILL.md"
+  },
+  {
+    "id": "write-a-skill",
+    "token": "MP-020::a1b2c3d4.e5f6a7b8",
+    "category": "custom",
+    "description": "Write a new skill file in the standard format. Given a description of the skill's purpose, produce a complete SKILL.md with frontmatter (name, description) and a clear, concise instruction body. Follow existing skill conventions.",
+    "input_type": "text",
+    "output_type": "text",
+    "constraints": ["exact match required", "no explanation", "no punctuation"],
+    "source_file": "https://github.com/mattpocock/skills/blob/main/write-a-skill/SKILL.md"
+  },
+  {
+    "id": "zoom-out",
+    "token": "MP-021::9e8d7c6b.5a4b3c2d",
+    "category": "custom",
+    "description": "Step back from implementation details and evaluate the bigger picture. Given code, a plan, or a problem, identify what the user might be missing at the system, product, or strategy level. Ask clarifying questions or surface assumptions that haven't been examined.",
+    "input_type": "text",
+    "output_type": "text",
+    "constraints": ["exact match required", "no explanation", "no punctuation"],
+    "source_file": "https://github.com/mattpocock/skills/blob/main/zoom-out/SKILL.md"
+  }
+]
