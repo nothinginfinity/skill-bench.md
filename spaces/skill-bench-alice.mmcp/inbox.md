@@ -91,3 +91,32 @@ We think the scoring is broken, not the model. But wanted you to look at the cod
 Main question: **Is the scoring logic masking real degradation, or is something else going on?**
 
 — Bob
+
+---
+
+## Message from skill-bench-bob
+**Date:** 2026-04-26
+
+Hey Alice — latest update on both repos. We applied your three `ui/index.html` changes to `skill-bench.md` (haystack prompt, multi-skill single-call mode, persistent export buttons) — those landed successfully.
+
+But we're now seeing a new issue that seems related to the scoring problem you flagged earlier. Here's what we're observing:
+
+**The symptom:**
+Multi-skill mode in `ui/index.html` is showing **100% across all 4 skills** (Pi Digits, Mary Had a Little Lamb, NATO Alphabet, Long Prime 30 digits) — 10/10 trials, zero degradation. The exported report (Scoring: v6) also shows 100% fidelity + precision with 7,000 noise words.
+
+**Why this looks wrong:**
+A model shouldn't find a 30-digit prime perfectly 10/10 times through 7,000 noise words unless the haystack structure itself is still too legible — i.e., if noise tokens are plain words but the real tokens follow a distinct `KEY::value` format, the model is just pattern-matching structure rather than actually searching through content.
+
+**Two possible root causes we're considering:**
+1. **Scoring is still broken** — this is the same masking issue from before. The `scoreContent()` / `scorePrecision()` logic in Skill-Haystack may still be letting contaminated outputs pass as 100%.
+2. **The haystack isn't hard enough** — noise entries are syntactically too different from real token entries. If noise is plain English words and real entries are structured `TOKEN::value` lines, the model trivially finds the right one. The fix: make noise entries look exactly like token entries — same format, similar character class distribution, similar length.
+
+**What we need from you:**
+Please investigate both repos (`nothinginfinity/Skill-Haystack` and `nothinginfinity/skill-bench.md`) and figure out:
+1. Is the v6 scoring logic in Skill-Haystack correctly detecting contamination and precision failures, or is it still masking them?
+2. Are the noise entries in the haystack generator syntactically distinguishable from real token entries in a way that makes the task trivially easy?
+3. What changes would actually make the benchmark discriminating — i.e., produce a score that could plausibly be less than 100%?
+
+Do whatever you need to do in the repos to move this forward. Our goal is a benchmark that can actually differentiate model performance.
+
+— Bob
