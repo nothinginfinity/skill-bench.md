@@ -140,7 +140,7 @@ select option{background:var(--surface-2);}
 .log-pass{color:var(--pass);}
 .log-fail{color:var(--fail);}
 .log-token{color:var(--text-muted);font-size:10px;}
-.run-controls{display:flex;gap:10px;}
+.run-controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
 
 /* SCORES */
 .results-header{text-align:center;margin-bottom:40px;}
@@ -277,6 +277,7 @@ select option{background:var(--surface-2);}
       <select id="runMode">
         <option value="demo">🎮 Demo mode (simulated — no real API calls)</option>
         <option value="live">🔴 Live mode (real API calls)</option>
+        <option value="multi">🧪 Multi-Skill (single call)</option>
       </select>
       <div class="divider"></div>
       <div class="card-title">🔍 Skill Preview</div>
@@ -338,9 +339,12 @@ select option{background:var(--surface-2);}
       <div class="log-line"><span class="log-id" style="color:var(--text-faint)">—</span><span class="text-muted text-xs">Waiting for run to start…</span></div>
     </div>
   </div>
+  <!-- Persistent run controls with always-visible export buttons -->
   <div class="run-controls">
     <button class="btn btn-secondary" onclick="pauseRun()" id="btnPause">⏸ Pause</button>
     <button class="btn btn-ghost" onclick="stopRun()">⏹ Stop</button>
+    <button class="btn btn-ghost btn-sm" onclick="exportCSV()" title="Export results as CSV">⬇ CSV</button>
+    <button class="btn btn-ghost btn-sm" onclick="exportJSON()" title="Export results as JSON">⬇ JSON</button>
     <div style="margin-left:auto;" class="flex items-center gap-2 text-sm text-muted" id="elapsedDisplay">00:00</div>
   </div>
 </div>
@@ -365,6 +369,7 @@ select option{background:var(--surface-2);}
       <div class="section-title">Scoreboard</div>
       <div class="flex gap-2">
         <button class="btn btn-ghost btn-sm" onclick="exportCSV()">⬇ Export CSV</button>
+        <button class="btn btn-ghost btn-sm" onclick="exportJSON()">⬇ Export JSON</button>
         <button class="btn btn-secondary btn-sm" onclick="showPage('setup')">+ New Run</button>
       </div>
     </div>
@@ -645,7 +650,6 @@ function renderModelConfig(slot, containerId){
   const container = document.getElementById(containerId);
   const providerKeys = Object.keys(PROVIDERS);
   const prov = PROVIDERS[cfg.provider];
-  const dotColor = slot==='A'?'var(--accent)':'var(--accent-2)';
 
   container.innerHTML = `
     <div class="provider-grid" id="provGrid${slot}">
@@ -788,8 +792,13 @@ async function startRun(){
     document.getElementById('speedValue').textContent=elapsed>0?Math.round(runState.current/elapsed):0;
   },2000);
 
-  await runModel(skills,nameA,cfgA,'A',mode,timeout,conc);
-  if(hasB&&!runState.stopped)await runModel(skills,nameB,cfgB,'B',mode,timeout,conc);
+  if(mode==='multi'){
+    await runModelMulti(skills,nameA,cfgA,'A',timeout);
+    if(hasB&&!runState.stopped)await runModelMulti(skills,nameB,cfgB,'B',timeout);
+  } else {
+    await runModel(skills,nameA,cfgA,'A',mode,timeout,conc);
+    if(hasB&&!runState.stopped)await runModel(skills,nameB,cfgB,'B',mode,timeout,conc);
+  }
   if(!runState.stopped)finishRun();
 }
 
@@ -820,6 +829,54 @@ async function runModel(skills,modelName,cfg,slot,mode,timeout,conc){
   card.className='model-card '+(pass/(Math.max(pass+fail,1))>=0.9?'done-pass':'done-fail');
 }
 
+// Multi-skill single-call mode: sends all skills in one prompt, scores each token independently
+async function runModelMulti(skills,modelName,cfg,slot,timeout){
+  const card=document.getElementById('card'+slot);
+  card.className='model-card running'+(slot==='B'?' running-b':'');
+  const results=runState.results[modelName];
+  const prov=PROVIDERS[cfg.provider];
+  const t0=Date.now();
+
+  // Build haystack with noise tokens surrounding each skill token
+  const noiseTokens=skills.map((_,i)=>`NOISE-${String(i+1000).padStart(4,'0')}::${(Math.random()*1e10).toFixed(5)}`);
+  let haystack='';
+  skills.forEach((s,i)=>{
+    haystack+=noiseTokens[i]+'\n';
+    haystack+=`---\nskill: ${s.skill}\ntoken: ${s.token}\n---\n`;
+    if(i+1<skills.length)haystack+=noiseTokens[(i+1)%noiseTokens.length]+'\n';
+  });
+
+  const skillList=skills.map((s,i)=>`${i+1}. "${s.skill}"`).join('\n');
+  const prompt=`You are a skill-routing benchmark assistant. Your task is to find and emit the exact routing token for each requested skill. The tokens are embedded in the context below. Output ONLY the token strings, one per line in the same order as the requested skills — no labels, no explanation, no extra formatting.\n\n[HAYSTACK CONTEXT]\n${haystack}\n\nSkills requested:\n${skillList}\n\nTokens (one per line, in order):`;
+
+  let responseLines=[];
+  try{
+    const raw=await prov.call(cfg.model,cfg.key,prompt,timeout);
+    responseLines=raw.split('\n').map(l=>l.trim()).filter(Boolean);
+  }catch(e){
+    // On error, fill all with error string
+    responseLines=skills.map(()=>'ERROR: '+e.message.slice(0,40));
+  }
+
+  let pass=0,fail=0;
+  skills.forEach((s,i)=>{
+    const got=(responseLines[i]||'').trim();
+    const p=got===s.token.trim();
+    const r={id:s.id,skill:s.skill,expected:s.token,got:got.slice(0,80),pass:p,ms:Math.round((Date.now()-t0)/skills.length)};
+    results.push(r);
+    if(p)pass++;else fail++;
+    runState.current++;
+    const pct=Math.round(pass/(pass+fail)*100);
+    document.getElementById('score'+slot).textContent=pct+'%';
+    document.getElementById('score'+slot+'Label').textContent=`${pass} / ${pass+fail} correct`;
+    renderMiniStars('stars'+slot,starsForPct(pct),slot==='A'?'var(--accent)':'var(--accent-2)');
+    logLine(s,r,slot);
+    updateProgress(runState.current);
+  });
+  card.className='model-card '+(pass/(Math.max(pass+fail,1))>=0.9?'done-pass':'done-fail');
+}
+
+// Haystack-based prompt: model must find the token in context, not guess from format hint
 async function evalSkill(skill,cfg,prov,mode,timeout){
   const t0=Date.now();
   if(mode==='demo'){
@@ -827,8 +884,12 @@ async function evalSkill(skill,cfg,prov,mode,timeout){
     const pass=Math.random()<0.92;
     return{id:skill.id,skill:skill.skill,expected:skill.token,got:pass?skill.token:'WRONG::'+skill.id,pass,ms:Date.now()-t0};
   }
-  // Live mode
-  const prompt=`You are a skill-routing benchmark assistant. When asked to emit a skill token, output ONLY the exact token string, nothing else.\n\nEmit the routing token for skill "${skill.skill}". Expected format example: BENCH-001::2867825.13278\n\nToken:`;
+  // Live mode — haystack prompt (no format hint leaked)
+  const noiseA=`NOISE-${String(Math.floor(Math.random()*9000)+1000)}::${(Math.random()*1e10).toFixed(5)}`;
+  const noiseB=`NOISE-${String(Math.floor(Math.random()*9000)+1000)}::${(Math.random()*1e10).toFixed(5)}`;
+  const noiseC=`NOISE-${String(Math.floor(Math.random()*9000)+1000)}::${(Math.random()*1e10).toFixed(5)}`;
+  const haystack=`${noiseA}\n${noiseB}\n---\nskill: ${skill.skill}\ntoken: ${skill.token}\n---\n${noiseC}`;
+  const prompt=`You are a skill-routing benchmark assistant. Your task is to find and emit the exact routing token for the requested skill. The token is embedded somewhere in the context below. Output ONLY the token string — no explanation, no formatting.\n\n[HAYSTACK CONTEXT]\n${haystack}\n\nSkill requested: "${skill.skill}"\nToken:`;
   try{
     const got=await prov.call(cfg.model,cfg.key,prompt,timeout);
     const pass=got.trim()===skill.token.trim();
@@ -884,7 +945,7 @@ function renderResults(summary){
   document.getElementById('winnerName').textContent=winner.name;
   document.getElementById('winnerScoreLine').textContent=`${winner.pct}% accuracy · ${winner.pass}/${winner.total} correct · avg ${winner.ms}ms`;
   const stars=starsForPct(winner.pct);
-  document.getElementById('winnerStars').innerHTML=[1,2,3,4,5].map(i=>`<div class="star ${i<=stars?'lit':''}">⭐</div>`).join('');
+  document.getElementById('winnerStars').innerHTML=[1,2,3,4,5].map(i=>`<div class="star ${i<=stars?'lit':''}">\u2B50</div>`).join('');
   const body=document.getElementById('scoreboardBody');body.innerHTML='';
   summary.forEach((m,i)=>{
     const rankClass=i===0?'first':i===1?'second':i===2?'third':'';
@@ -932,10 +993,17 @@ function launchConfetti(){
 }
 
 function exportCSV(){
-  const run=allRuns[0];if(!run)return;
+  const run=allRuns[0];if(!run){alert('No run data to export yet.');return;}
   const lines=['model,skill,expected,got,pass,ms'];
   Object.entries(run.details).forEach(([model,results])=>{results.forEach(r=>{lines.push(`"${model}","${r.skill}","${r.expected}","${r.got.replace(/"/g,'""')}",${r.pass},${r.ms}`);});});
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([lines.join('\n')],{type:'text/csv'}));a.download='skill-bench-results.csv';a.click();
+}
+
+function exportJSON(){
+  const run=allRuns[0];if(!run){alert('No run data to export yet.');return;}
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([JSON.stringify(run,null,2)],{type:'application/json'}));
+  a.download='skill-bench-results.json';a.click();
 }
 </script>
 </body>
