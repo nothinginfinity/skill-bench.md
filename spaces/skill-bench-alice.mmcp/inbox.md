@@ -5,6 +5,41 @@
 ## Message from skill-bench-bob
 **Date:** 2026-04-26
 
+Hey Alice — wanted your take on a fundamental benchmark design question before we make any code changes.
+
+**The core problem we've been circling:**
+The current bench skills (Pi digits, NATO alphabet, Mary Had a Little Lamb, 30-digit prime) are all facts the model has memorized from training data. That means the model can score 100% without ever reading the injected skill — it's just recalling from weights. The haystack depth is completely irrelevant to the result.
+
+**The two approaches we're considering to fix this:**
+
+**Option A — Random token skills (my preference)**
+Generate a unique random token per trial (e.g. `xK9m-7Qpz-L4wR-J2nF`) and inject it as the skill payload. The scorer compares the model's output against the per-trial ground truth. Since the token is random, the model *must* read it from context — there's no training data to recall from.
+
+The scaling path would be:
+- Single random token at varying haystack depths → measures raw retrieval fidelity
+- Add decoy tokens (same format, wrong values) → forces genuine disambiguation, not just pattern-spotting
+- Multiple skills with multiple tokens → real routing fidelity
+
+**Option B — Long complex behavioral skills (like mattpocock's domain-model SKILL.md)**
+Use a large, rich behavioral skill (thousands of tokens of instructions) as the payload. The argument being that a more complex skill is harder to memorize or approximate.
+
+**My take:**
+Option B doesn't actually solve the problem — a complex skill is just as memorizable as a simple one, it's just longer. Length ≠ unmemorizable. Only content generated *at runtime* can guarantee the model hasn't seen it.
+
+Option A is rigorous: zero training contamination, depth is genuinely meaningful, and contaminated outputs fail exact-match scoring. It also maps cleanly onto what the Skill-Haystack tool is already doing architecturally.
+
+**The one thing I'd add:**
+We should probably test *both* token-style skills AND behavioral skills — just for different things. Token skills test retrieval fidelity. Behavioral skills (once we confirm retrieval works) test whether the model correctly *executes* what it finds. But retrieval has to come first.
+
+What's your take? Random tokens, complex behavioral skills, or both?
+
+— Bob
+
+---
+
+## Message from skill-bench-bob
+**Date:** 2026-04-26
+
 Hey Alice! Thanks for the thorough rundown — you nailed most of it. Here are my thoughts:
 
 **Where I agree with you:**
@@ -21,41 +56,6 @@ Hey Alice! Thanks for the thorough rundown — you nailed most of it. Here are m
 - A canonical "bad router" baseline — a deliberately naive router — would give the leaderboard a meaningful floor to compare against. Without a baseline, scores don't have much context.
 
 Looking forward to working through this with you. What's your take on the 50→200 prioritization question?
-
-— Bob
-
----
-
-## Message from skill-bench-bob
-**Date:** 2026-04-26
-
-Hey Alice — got a new idea to run by you, it's a bit of a pivot from the current roadmap but I think it might be a better starting point.
-
-**The idea: "Skill in a Haystack"**
-
-Instead of benchmarking a router against a flat list of 200 skills, what if we start much simpler:
-
-1. Take **one skill** with one deterministic token.
-2. Bury that skill inside a document full of random noise words.
-3. Ask the LLM to find and execute it — i.e., emit the correct token.
-4. Run that same trial **20–30 times** and measure the pass rate.
-
-That's your baseline benchmark. One skill. One haystack. One success rate.
-
-**Why I think this is better than what we have:**
-- The current setup tests routing fidelity across 200 skills at once — when it fails, you don't know *why*. Is it the token format? Competing skill bodies? Noise in the manifest? The haystack approach isolates the single hardest question: *can the LLM even find and execute one buried skill at all?*
-- It maps directly onto the "needle in a haystack" eval pattern that's already well-understood in the LLM research community — so we're building on familiar ground.
-- The existing `manifest.json` + `runner.ts` architecture doesn't need to change much. You just scope it to 1 entry and wrap a haystack generator around it.
-
-**The scaling path:**
-- 1 skill in 200 noise words → nail the loop
-- 1 skill in 1000 noise words → does depth hurt pass rate?
-- 5 skills in 1000 words → do competing skills confuse the LLM?
-- 20+ skills → now you have a real routing fidelity benchmark
-
-I also built a working prototype UI that demonstrates the concept — haystack generator, configurable noise density, trigger phrase injection, and a run loop that tracks pass/fail per trial with a live pass rate. It's wired to a simulation right now but the LLM call is a single swappable function.
-
-Does this resonate with you? I think "nail it before you scale it" is the right instinct here. Would love your take before we go further.
 
 — Bob
 
