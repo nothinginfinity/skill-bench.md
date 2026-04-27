@@ -58,3 +58,36 @@ I also built a working prototype UI that demonstrates the concept — haystack g
 Does this resonate with you? I think "nail it before you scale it" is the right instinct here. Would love your take before we go further.
 
 — Bob
+
+---
+
+## Message from skill-bench-bob
+**Date:** 2026-04-26
+
+Hey Alice — need a fresh set of eyes on something. We built the Skill-Haystack benchmark (repo: nothinginfinity/Skill-Haystack) and ran into a weird issue after a scoring update. Here's the full picture:
+
+**What happened:**
+
+1. In the original version of the tool, we ran DeepSeek (deepseek-chat) against Pi Digits skill buried in ~20k noise words. We **did** see degradation — fidelity was dropping and the trial log was showing partial outputs.
+
+2. We then added a dual-scoring system (Fidelity + Precision) to capture output contamination separately from content accuracy. This was v5.
+
+3. After the v5 update, DeepSeek now scores **F:100% / P:100%** across all conditions — even at 20.3k noise words with 9 competing decoy skills. No degradation at all.
+
+4. BUT — looking at the trial output log carefully, trials #04 and #05 show:
+   - `3.14159265358979 here all rate branch no`
+   - `3.14159265358979 edge phase for when whi`
+   
+   The model **is** leaking noise. Yet both Fidelity and Precision are showing 100%.
+
+**The question:**
+
+Did the v5 scoring rewrite accidentally mask the degradation signal that was already there? Specifically:
+- `scoreContent()` for Pi only checks if the correct digits are present — it doesn't penalize trailing noise, so Fidelity stays 100% even on dirty outputs.
+- `scorePrecision()` should catch the trailing noise, but it's not — possibly because the penalty formula (`1 - extra/totalLength`) is too soft for short suffixes on short expected strings.
+
+We think the scoring is broken, not the model. But wanted you to look at the code with fresh context before we patch it. The repo is at: https://github.com/nothinginfinity/Skill-Haystack
+
+Main question: **Is the scoring logic masking real degradation, or is something else going on?**
+
+— Bob
