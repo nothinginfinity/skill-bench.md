@@ -616,6 +616,27 @@ const PROVIDERS = {
 };
 
 // ══════════════════════════════════════════════════════
+//  HAYSTACK NOISE POOL
+//  Same BENCH-{word}::{num} format as real tokens so the model
+//  cannot pattern-match its way to a 100% score.
+// ══════════════════════════════════════════════════════
+const FAKE_WORDS = [
+  'foghorn','spanner','caliper','rivet','torque','lumen',
+  'kelvin','pascal','farad','tesla','hertz','coulomb',
+  'ampere','newton','watt','joule','ohm','henry',
+  'candela','mole','becquerel','sievert','gray','lux',
+  'weber','siemens','radian','steradian','katal','dalton',
+  'fermi','angstrom','barn','torr','poise','stokes',
+  'neper','bel','phon','sone','jansky','kayser'
+];
+function fakeTok(){
+  const w=FAKE_WORDS[Math.floor(Math.random()*FAKE_WORDS.length)];
+  const n=String(Math.floor(Math.random()*9000)+1000);
+  return `BENCH-${w}::${n}`;
+}
+function shuffle(arr){for(let i=arr.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]];}return arr;}
+
+// ══════════════════════════════════════════════════════
 //  STATE
 // ══════════════════════════════════════════════════════
 let manifest = [];
@@ -829,7 +850,10 @@ async function runModel(skills,modelName,cfg,slot,mode,timeout,conc){
   card.className='model-card '+(pass/(Math.max(pass+fail,1))>=0.9?'done-pass':'done-fail');
 }
 
-// Multi-skill single-call mode: sends all skills in one prompt, scores each token independently
+// ─── Multi-skill single-call mode ───────────────────────────────────────────
+// Builds a flat shuffled pool of real tokens + fake tokens (no labels).
+// The model must match each requested skill name to the correct token
+// by concept — it cannot read a key-value pair or pattern-match structure.
 async function runModelMulti(skills,modelName,cfg,slot,timeout){
   const card=document.getElementById('card'+slot);
   card.className='model-card running'+(slot==='B'?' running-b':'');
@@ -837,24 +861,19 @@ async function runModelMulti(skills,modelName,cfg,slot,timeout){
   const prov=PROVIDERS[cfg.provider];
   const t0=Date.now();
 
-  // Build haystack with noise tokens surrounding each skill token
-  const noiseTokens=skills.map((_,i)=>`NOISE-${String(i+1000).padStart(4,'0')}::${(Math.random()*1e10).toFixed(5)}`);
-  let haystack='';
-  skills.forEach((s,i)=>{
-    haystack+=noiseTokens[i]+'\n';
-    haystack+=`---\nskill: ${s.skill}\ntoken: ${s.token}\n---\n`;
-    if(i+1<skills.length)haystack+=noiseTokens[(i+1)%noiseTokens.length]+'\n';
-  });
+  // Build a flat pool: real tokens + 8 fakes per skill, all shuffled, no labels
+  const realTokens=skills.map(s=>s.token);
+  const fakeTokens=skills.flatMap(()=>Array.from({length:8},fakeTok));
+  const pool=shuffle([...realTokens,...fakeTokens]);
 
   const skillList=skills.map((s,i)=>`${i+1}. "${s.skill}"`).join('\n');
-  const prompt=`You are a skill-routing benchmark assistant. Your task is to find and emit the exact routing token for each requested skill. The tokens are embedded in the context below. Output ONLY the token strings, one per line in the same order as the requested skills — no labels, no explanation, no extra formatting.\n\n[HAYSTACK CONTEXT]\n${haystack}\n\nSkills requested:\n${skillList}\n\nTokens (one per line, in order):`;
+  const prompt=`You are a skill-routing benchmark assistant. The tokens for the requested skills are hidden in the pool below among decoy tokens. Output ONLY the correct token for each skill, one per line in the same order as the requested list — no labels, no explanation.\n\nToken pool:\n${pool.join('\n')}\n\nSkills requested:\n${skillList}\n\nTokens (one per line, in order):`;
 
   let responseLines=[];
   try{
-    const raw=await prov.call(cfg.model,cfg.key,prompt,timeout);
+    const raw=await prov.call(cfg.model,cfg.key,prompt,timeout*2);
     responseLines=raw.split('\n').map(l=>l.trim()).filter(Boolean);
   }catch(e){
-    // On error, fill all with error string
     responseLines=skills.map(()=>'ERROR: '+e.message.slice(0,40));
   }
 
@@ -876,7 +895,9 @@ async function runModelMulti(skills,modelName,cfg,slot,timeout){
   card.className='model-card '+(pass/(Math.max(pass+fail,1))>=0.9?'done-pass':'done-fail');
 }
 
-// Haystack-based prompt: model must find the token in context, not guess from format hint
+// ─── Single-skill live mode ──────────────────────────────────────────────────
+// Builds a flat shuffled pool of the real token + 8 fakes (no labels, no
+// key-value pairs). Model must identify the correct token by skill concept.
 async function evalSkill(skill,cfg,prov,mode,timeout){
   const t0=Date.now();
   if(mode==='demo'){
@@ -884,12 +905,10 @@ async function evalSkill(skill,cfg,prov,mode,timeout){
     const pass=Math.random()<0.92;
     return{id:skill.id,skill:skill.skill,expected:skill.token,got:pass?skill.token:'WRONG::'+skill.id,pass,ms:Date.now()-t0};
   }
-  // Live mode — haystack prompt (no format hint leaked)
-  const noiseA=`NOISE-${String(Math.floor(Math.random()*9000)+1000)}::${(Math.random()*1e10).toFixed(5)}`;
-  const noiseB=`NOISE-${String(Math.floor(Math.random()*9000)+1000)}::${(Math.random()*1e10).toFixed(5)}`;
-  const noiseC=`NOISE-${String(Math.floor(Math.random()*9000)+1000)}::${(Math.random()*1e10).toFixed(5)}`;
-  const haystack=`${noiseA}\n${noiseB}\n---\nskill: ${skill.skill}\ntoken: ${skill.token}\n---\n${noiseC}`;
-  const prompt=`You are a skill-routing benchmark assistant. Your task is to find and emit the exact routing token for the requested skill. The token is embedded somewhere in the context below. Output ONLY the token string — no explanation, no formatting.\n\n[HAYSTACK CONTEXT]\n${haystack}\n\nSkill requested: "${skill.skill}"\nToken:`;
+  // Live mode — shuffled flat pool, no labels
+  const fakes=Array.from({length:8},fakeTok);
+  const pool=shuffle([...fakes,skill.token]);
+  const prompt=`You are a skill-routing benchmark assistant. The token for skill "${skill.skill}" is hidden in the list below among decoy tokens. Output ONLY that token — no explanation, no formatting.\n\n${pool.join('\n')}\n\nToken:`;
   try{
     const got=await prov.call(cfg.model,cfg.key,prompt,timeout);
     const pass=got.trim()===skill.token.trim();
